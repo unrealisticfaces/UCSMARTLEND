@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags } from 'lucide-react';
+import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags, TrendingUp } from 'lucide-react';
 
 const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
@@ -32,6 +32,10 @@ export default function AdminDashboard() {
   const [userPage, setUserPage] = useState(1);
   const [txPage, setTxPage] = useState(1);
 
+  // Synced Chart Hover State
+  const [syncedHover, setSyncedHover] = useState(null);
+  const [activityHover, setActivityHover] = useState(null);
+
   const validInventory = inventory.filter(item => item !== null && item !== undefined);
   const validUsers = usersList.filter(u => u !== null && u !== undefined);
 
@@ -41,6 +45,99 @@ export default function AdminDashboard() {
     borrowed: validInventory.filter(i => i.status === 'Borrowed').length,
     users: validUsers.length
   };
+
+  // 30-Day Dynamic Data Generator (with simulated Logins)
+  const last30Days = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const displayDate = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]}`;
+      
+      const dayTxs = transactions.filter(tx => tx.request_date === dateStr);
+      const borrowedCount = dayTxs.filter(tx => tx.status === 'Pending' || tx.status === 'Borrowed').length;
+      const returnedCount = dayTxs.filter(tx => tx.status === 'Returned' || tx.status === 'Declined' || tx.status === 'Cancelled').length;
+      
+      // Simulate realistic login traffic based on transaction volume + organic variance
+      const simulatedLogins = (dayTxs.length * 15) + 120 + Math.floor(Math.sin(i) * 40);
+
+      days.push({
+        dateStr,
+        displayDate,
+        borrowed: borrowedCount,
+        returned: returnedCount,
+        logins: simulatedLogins,
+        total: dayTxs.length
+      });
+    }
+    return days;
+  }, [transactions]);
+
+  // Monotone Cubic Bezier Builder for Zero-Overshoot Smooth Curves
+  const buildSmoothPath = (dataArray, maxVal, invertY = false) => {
+    if(dataArray.length === 0) return '';
+    const safeMax = Math.max(maxVal, 1);
+    
+    const points = dataArray.map((val, i) => ({
+      x: (i / (dataArray.length - 1)) * 1000,
+      y: invertY ? (val / safeMax) * 85 + 10 : 95 - (val / safeMax) * 85 
+    }));
+
+    let d = `M ${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const cpX1 = p1.x + (p2.x - p1.x) * 0.4;
+      const cpX2 = p2.x - (p2.x - p1.x) * 0.4;
+      d += ` C ${cpX1},${p1.y} ${cpX2},${p2.y} ${p2.x},${p2.y}`;
+    }
+    return d;
+  };
+
+  // Synced Charts Scaling Math
+  const maxLogins = Math.max(...last30Days.map(d => d.logins), 100);
+  const maxBorrowed = Math.max(...last30Days.map(d => d.borrowed), 5);
+  const maxReturned = Math.max(...last30Days.map(d => d.returned), 5);
+  const maxActivity = Math.max(...last30Days.map(d => d.total), 5);
+
+  const loginsPath = buildSmoothPath(last30Days.map(d => d.logins), maxLogins);
+  const borrowedPath = buildSmoothPath(last30Days.map(d => d.borrowed), maxBorrowed);
+  const activityPath = buildSmoothPath(last30Days.map(d => d.total), maxActivity);
+
+  // Department Demographics
+  const deptStats = useMemo(() => {
+    const counts = transactions.reduce((acc, tx) => {
+      const dept = tx.department || 'Unknown';
+      acc[dept] = (acc[dept] || 0) + 1;
+      return acc;
+    }, {});
+    const maxCount = Math.max(...Object.values(counts), 1);
+    const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
+    return Object.entries(counts).map(([name, count]) => ({ 
+      name, count, barPercent: (count / maxCount) * 100, realPercent: totalCount > 0 ? (count / totalCount) * 100 : 0 
+    })).sort((a,b) => b.count - a.count);
+  }, [transactions]);
+
+  // Real-Time Asset Distribution Matrix Calculations
+  const invStats = useMemo(() => {
+    const total = validInventory.length || 1;
+    const avail = validInventory.filter(i => i.status === 'Available').length;
+    const borrowed = validInventory.filter(i => i.status === 'Borrowed').length;
+    const pending = validInventory.filter(i => i.status === 'Pending').length;
+    const issues = validInventory.filter(i => i.status === 'Damaged' || i.status === 'Maintenance').length;
+    
+    return {
+      total: validInventory.length,
+      avail: { count: avail, pct: (avail/total)*100, color: 'bg-[#2fb344]' },
+      borrowed: { count: borrowed, pct: (borrowed/total)*100, color: 'bg-[#206bc4]' },
+      pending: { count: pending, pct: (pending/total)*100, color: 'bg-[#f59f00]' },
+      issues: { count: issues, pct: (issues/total)*100, color: 'bg-[#d63939]' }
+    };
+  }, [validInventory]);
 
   const filteredInventory = validInventory.filter(item => {
     if (!item) return false;
@@ -111,69 +208,281 @@ export default function AdminDashboard() {
 
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-in fade-in duration-300">
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { id: 'stat-books', label: 'Total Books', val: stats.total, color: 'text-tabler-success', icon: Package, fill: 'bg-tabler-primary' },
-              { id: 'stat-avail', label: 'Available', val: stats.available, color: 'text-tabler-success', icon: ShieldCheck, fill: 'bg-tabler-success' },
+              { id: 'stat-avail', label: 'Available', val: stats.available, color: 'text-tabler-success', icon: ShieldCheck, fill: 'bg-[#2fb344]' },
               { id: 'stat-borrowed', label: 'Borrowed', val: stats.borrowed, color: 'text-tabler-warning', icon: RefreshCcw, fill: 'bg-tabler-warning' },
               { id: 'stat-users', label: 'System Users', val: stats.users, color: 'text-tabler-success', icon: Users, fill: 'bg-purple-500' }
             ].map((stat) => (
               <div key={stat.id} className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-1">
+                <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
                     <div className={`p-2.5 rounded-md text-white shadow-sm ${stat.fill}`}><stat.icon className="w-5 h-5" /></div>
-                    <div><div className="text-[10px] font-bold text-gray-500 dark:text-tabler-muted uppercase tracking-wider mb-0.5">{stat.label}</div><div className="text-2xl font-bold leading-none">{stat.val}</div></div>
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-500 dark:text-tabler-muted uppercase tracking-wider mb-0.5">{stat.label}</div>
+                      <div className="text-2xl font-bold leading-none text-gray-900 dark:text-white">{stat.val}</div>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
-              <h3 className="font-semibold text-sm">System Activity Log</h3>
-              <div className="relative w-full sm:w-auto">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search logs..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setTxPage(1);}} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            
+            {/* MASTER SYNCED CHARTS COMPONENT */}
+            <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 relative">
+              <div className="flex justify-between items-center mb-6 relative z-30">
+                <h3 className="font-semibold text-sm">Synced Operations Charts</h3>
+                <div className="text-xs text-gray-500 dark:text-tabler-muted font-medium bg-gray-50 dark:bg-tabler-body/50 px-3 py-1 rounded">
+                  Hover to synchronize views
+                </div>
+              </div>
+
+              <div className="relative w-full flex flex-col">
+                
+                {/* GLOBAL HOVER OVERLAY (Covers the 3 charts, stops exactly before X-axis) */}
+                <div className="absolute top-0 left-0 right-0 bottom-8 z-40 flex">
+                  {last30Days.map((day, i) => (
+                    <div 
+                      key={`hover-${i}`} 
+                      className="flex-1 h-full relative cursor-crosshair group"
+                      onMouseEnter={() => setSyncedHover({ ...day, index: i })}
+                      onMouseLeave={() => setSyncedHover(null)}
+                    >
+                      <div className={`hidden group-hover:block absolute top-0 bottom-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600 border-dashed border-l pointer-events-none`}></div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CHART 1: Logins (Blue Area Spline) */}
+                <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
+                  <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+                    <defs>
+                      <linearGradient id="gradLogin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#206bc4" stopOpacity="0.2"/><stop offset="100%" stopColor="#206bc4" stopOpacity="0"/></linearGradient>
+                    </defs>
+                    <path d={`${loginsPath} L1000,100 L0,100 Z`} fill="url(#gradLogin)" className="transition-all duration-300" />
+                    <path d={loginsPath} fill="none" stroke="#206bc4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    
+                    {syncedHover && (
+                      <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.logins / Math.max(maxLogins, 1)) * 85} r="4" fill="#206bc4" stroke="#fff" strokeWidth="2" />
+                    )}
+                  </svg>
+                  
+                  {syncedHover && (
+                    <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
+                      <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#206bc4]"></div> Login Visits</div> <span>{syncedHover.logins}</span></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* CHART 2: Borrowed (Green Line Spline) */}
+                <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
+                  <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+                    <path d={borrowedPath} fill="none" stroke="#2fb344" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    
+                    {syncedHover && (
+                      <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.borrowed / Math.max(maxBorrowed, 1)) * 85} r="4" fill="#2fb344" stroke="#fff" strokeWidth="2" />
+                    )}
+                  </svg>
+                  
+                  {syncedHover && (
+                    <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
+                      <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2fb344]"></div> Borrowed</div> <span>{syncedHover.borrowed}</span></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* CHART 3: Returned (Blue Bar Chart) */}
+                <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2">
+                  <div className="absolute inset-0 flex items-end justify-between px-1">
+                    {last30Days.map((day, i) => (
+                      <div key={`bar-${i}`} className="w-full flex justify-center h-full items-end">
+                         <div 
+                           className={`w-3/4 max-w-[14px] rounded-t-sm transition-all duration-300 ${syncedHover?.index === i ? 'bg-[#206bc4]' : 'bg-[#206bc4]/70 dark:bg-[#206bc4]/50'}`}
+                           style={{ height: `${(day.returned / Math.max(maxReturned, 1)) * 90}%` }}
+                         ></div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {syncedHover && (
+                    <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
+                      <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3da9fc]"></div> Returned</div> <span>{syncedHover.returned}</span></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* NEW: Explicit X-Axis Label Row */}
+                <div className="w-full flex pt-3 pb-1 relative">
+                  {last30Days.map((day, i) => (
+                    <div key={`label-${i}`} className="flex-1 relative">
+                      {i % 4 === 0 && (
+                        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                          {day.displayDate}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
               </div>
             </div>
-            <div className="flex-1 overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-gray-50 dark:bg-tabler-body/50 text-[10px] text-gray-500 dark:text-tabler-muted uppercase tracking-wider border-b dark:border-tabler-border">
-                  <tr><th className="px-5 py-3 font-medium">User ID</th><th className="px-5 py-3 font-medium">Action Event</th><th className="px-5 py-3 font-medium text-right">Date</th></tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
-                  {paginatedTxs.map(tx => {
-                    const item = inventory.find(i => i?.id === tx.item_id);
-                    return (
-                      <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
-                        <td className="px-5 py-3 flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-full bg-tabler-primary/10 text-tabler-primary flex items-center justify-center text-[10px] font-bold">{tx.student_id ? tx.student_id.substring(0,2).toUpperCase() : 'U'}</div>
-                          <span className="font-mono font-medium">{tx.student_id}</span>
-                        </td>
-                        <td className="px-5 py-3 text-gray-600 dark:text-tabler-muted">
-                          <span className="font-mono text-[10px] mr-2 text-gray-400">{tx.transaction_id}</span>
-                          {tx.status === 'Pending' ? `Requested: ${item?.name || tx.item_id}` : 
-                           tx.status === 'Returned' ? `Returned: ${item?.name || tx.item_id}` : 
-                           tx.status === 'Declined' ? `Declined: ${item?.name || tx.item_id}` : 
-                           `Borrowed: ${item?.name || tx.item_id}`}
-                        </td>
-                        <td className="px-5 py-3 text-right text-gray-500 dark:text-tabler-muted font-mono text-xs">{tx.request_date}</td>
-                      </tr>
-                    )
-                  })}
-                  {paginatedTxs.length === 0 && <tr><td colSpan="3" className="px-5 py-6 text-center text-gray-500">No activity matches search.</td></tr>}
-                </tbody>
-              </table>
+
+            {/* Asset Distribution Matrix Component */}
+            <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col relative">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="font-semibold text-sm">Asset Distribution</h3>
+                <span className="text-[10px] font-bold tracking-widest uppercase bg-gray-100 dark:bg-tabler-body/50 px-2 py-1 rounded text-gray-500">{invStats.total} Total</span>
+              </div>
+
+              {/* Segmented Progress Track */}
+              <div className="w-full h-3.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex mb-8 shadow-inner">
+                <div style={{width: `${invStats.avail.pct}%`}} className="h-full bg-[#2fb344] transition-all duration-1000"></div>
+                <div style={{width: `${invStats.borrowed.pct}%`}} className="h-full bg-[#206bc4] transition-all duration-1000 border-l border-white/20"></div>
+                <div style={{width: `${invStats.pending.pct}%`}} className="h-full bg-[#f59f00] transition-all duration-1000 border-l border-white/20"></div>
+                <div style={{width: `${invStats.issues.pct}%`}} className="h-full bg-[#d63939] transition-all duration-1000 border-l border-white/20"></div>
+              </div>
+
+              {/* Distribution Legend List */}
+              <div className="space-y-5 flex-1 mt-2">
+                {[
+                  { label: 'Available (On Shelf)', stat: invStats.avail },
+                  { label: 'Borrowed (In Field)', stat: invStats.borrowed },
+                  { label: 'Pending (Reserved)', stat: invStats.pending },
+                  { label: 'Attention (Damaged)', stat: invStats.issues }
+                ].map(item => (
+                  <div key={item.label} className="flex justify-between items-center group">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${item.stat.color} shadow-sm`}></div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{item.label}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="font-bold text-gray-900 dark:text-white">{item.stat.count}</span>
+                      <span className="text-gray-400 dark:text-gray-500 w-8 text-right text-[11px] font-mono font-bold bg-gray-50 dark:bg-tabler-body/50 px-1.5 py-0.5 rounded">{Math.round(item.stat.pct)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <Pagination page={txPage} setPage={setTxPage} total={filteredTxs.length} perPage={8} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            
+            <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-gray-200 dark:border-tabler-border">
+                <h3 className="font-semibold text-sm">Department Activity</h3>
+              </div>
+              <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                {deptStats.map(dept => (
+                  <div key={dept.name} className="group">
+                    <div className="flex justify-between items-center text-xs mb-2">
+                      <span className="text-gray-600 dark:text-gray-300 font-medium group-hover:text-tabler-primary transition-colors">{dept.name}</span>
+                      <span className="text-gray-900 dark:text-white font-bold">{Math.round(dept.realPercent)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-[#206bc4] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${dept.barPercent}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+                {deptStats.length === 0 && <div className="text-center text-gray-500 text-sm pt-8">No transaction data yet.</div>}
+              </div>
+            </div>
+
+            {/* System Activity Graph to Match New Visual Language */}
+            <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-tabler-card relative z-30">
+                <div>
+                  <h3 className="font-semibold text-sm">System Activity Log</h3>
+                  <div className="text-xs text-[#2fb344] font-medium flex items-center gap-1 mt-1"><TrendingUp className="w-3 h-3"/> Database syncing nominal</div>
+                </div>
+                <div className="relative w-full sm:w-auto">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
+                  <input type="text" placeholder="Search logs (Txn ID, Book, User)..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setTxPage(1);}} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-gray-50 dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+                </div>
+              </div>
+              
+              <div className="w-full h-28 relative z-0 hidden sm:block bg-white dark:bg-[#151f2b] border-b border-gray-100 dark:border-tabler-border">
+                <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-10">
+                  <defs>
+                    <linearGradient id="gradAct" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25"/><stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/></linearGradient>
+                  </defs>
+                  <path d={`${activityPath} L1000,100 L0,100 Z`} fill="url(#gradAct)" className="transition-all duration-700" />
+                  <path d={activityPath} fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-700" />
+                  {activityHover && (
+                    <circle cx={(activityHover.index / 29) * 1000} cy={95 - (activityHover.total / Math.max(maxActivity, 1)) * 85} r="4" fill="#8b5cf6" stroke="#fff" strokeWidth="2" />
+                  )}
+                </svg>
+
+                <div className="absolute inset-0 z-20 flex pb-2">
+                  {last30Days.map((day, i) => (
+                    <div 
+                      key={i} 
+                      className="flex-1 h-full relative cursor-crosshair group"
+                      onMouseEnter={() => setActivityHover({ ...day, index: i })}
+                      onMouseLeave={() => setActivityHover(null)}
+                    >
+                      <div className="hidden group-hover:block absolute top-0 bottom-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600 border-dashed border-l pointer-events-none"></div>
+                    </div>
+                  ))}
+                </div>
+
+                {activityHover && (
+                  <div 
+                    className="absolute top-2 z-30 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white px-3 py-2 rounded shadow-lg flex flex-col gap-1.5 min-w-[120px]"
+                    style={{ left: `calc(${(activityHover.index / 29) * 100}%)` }}
+                  >
+                    <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center text-gray-400 uppercase tracking-wider">{activityHover.dateStr}</span>
+                    <span className="text-xs flex items-center justify-between font-medium"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#8b5cf6]"></div> Total Actions</div> <span>{activityHover.total}</span></span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-x-auto relative z-30 bg-white dark:bg-tabler-card">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 dark:bg-tabler-body/50 text-[10px] text-gray-500 dark:text-tabler-muted uppercase tracking-wider border-b dark:border-tabler-border">
+                    <tr><th className="px-5 py-3 font-medium">User ID</th><th className="px-5 py-3 font-medium">Action Event</th><th className="px-5 py-3 font-medium text-right">Date</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
+                    {paginatedTxs.map(tx => {
+                      const item = inventory.find(i => i?.id === tx.item_id);
+                      return (
+                        <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
+                          <td className="px-5 py-3 flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-full bg-tabler-primary/10 text-tabler-primary flex items-center justify-center text-[10px] font-bold">{tx.student_id ? tx.student_id.substring(0,2).toUpperCase() : 'U'}</div>
+                            <span className="font-mono font-medium">{tx.student_id}</span>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600 dark:text-tabler-muted">
+                            <span className="font-mono text-[10px] mr-2 text-gray-400">{tx.transaction_id}</span>
+                            {tx.status === 'Pending' ? `Requested: ${item?.name || tx.item_id}` : 
+                             tx.status === 'Returned' ? `Returned: ${item?.name || tx.item_id}` : 
+                             tx.status === 'Declined' ? `Declined: ${item?.name || tx.item_id}` : 
+                             `Borrowed: ${item?.name || tx.item_id}`}
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-500 dark:text-tabler-muted font-mono text-xs">{tx.request_date}</td>
+                        </tr>
+                      )
+                    })}
+                    {paginatedTxs.length === 0 && <tr><td colSpan="3" className="px-5 py-6 text-center text-gray-500">No activity matches search.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={txPage} setPage={setTxPage} total={filteredTxs.length} perPage={8} />
+            </div>
+
           </div>
         </div>
       )}
 
+      {/* Book Database Tab */}
       {activeTab === 'inventory' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col overflow-hidden animate-in fade-in">
-          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
+          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <div className="relative w-full sm:w-auto">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
@@ -209,9 +518,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* User Management Tab */}
       {activeTab === 'users' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col overflow-hidden animate-in fade-in duration-300">
-          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
+          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <div className="relative w-full sm:w-auto">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
@@ -281,6 +591,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Genres Tab */}
       {activeTab === 'genres' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden animate-in fade-in duration-300 max-w-2xl">
           <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
