@@ -6,11 +6,11 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
   if (totalPages <= 1) return null;
   return (
-    <div className="flex justify-between items-center px-6 py-4 bg-gray-50 dark:bg-tabler-body/50 border-t border-gray-200 dark:border-tabler-border mt-auto">
+    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 bg-gray-50 dark:bg-tabler-body/50 border-t border-gray-200 dark:border-tabler-border mt-auto">
       <span className="text-xs text-gray-500 dark:text-tabler-muted font-medium">Showing {(page-1)*perPage + 1} to {Math.min(page*perPage, total)} of {total}</span>
-      <div className="flex gap-2">
-        <button onClick={() => setPage(page - 1)} disabled={page === 1} className="px-3 py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Prev</button>
-        <button onClick={() => setPage(page + 1)} disabled={page === totalPages} className="px-3 py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Next</button>
+      <div className="flex gap-2 w-full sm:w-auto">
+        <button onClick={() => setPage(page - 1)} disabled={page === 1} className="flex-1 sm:flex-none px-4 py-2 sm:px-3 sm:py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Prev</button>
+        <button onClick={() => setPage(page + 1)} disabled={page === totalPages} className="flex-1 sm:flex-none px-4 py-2 sm:px-3 sm:py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Next</button>
       </div>
     </div>
   );
@@ -138,20 +138,20 @@ export default function SaoDashboard() {
         </div>
       </div>
       
-      <div className="bg-white dark:bg-tabler-card border rounded-lg shadow-sm flex overflow-x-auto border-gray-200 dark:border-tabler-border">
-        <button onClick={() => setActiveTab('console')} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'console' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Activity className="w-4 h-4" /> Traffic Console</button>
-        <button onClick={() => {setActiveTab('approvals'); setAppPage(1); setTxSearchQuery('');}} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ClipboardCheck className="w-4 h-4" /> Approvals <span className="bg-tabler-warning/10 text-tabler-warning px-1.5 rounded-full text-[10px] ml-1">{pendingRequests.length}</span></button>
-        <button onClick={() => {setActiveTab('returns'); setRetPage(1); setTxSearchQuery('');}} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'returns' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ArrowUpRight className="w-4 h-4" /> Active Borrowings</button>
-        <button onClick={() => {setActiveTab('history'); setHistPage(1); setTxSearchQuery('');}} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> SAO History</button>
-        {canRead && <button onClick={() => {setActiveTab('inventory'); setInvPage(1);}} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'inventory' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Database className="w-4 h-4" /> Book Inventory</button>}
-        {canUpdate && <button onClick={() => setActiveTab('genres')} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'genres' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Tags className="w-4 h-4" /> Genres</button>}
+      <div className="bg-white dark:bg-tabler-card border rounded-lg shadow-sm flex overflow-x-auto scrollbar-hide border-gray-200 dark:border-tabler-border">
+        <button onClick={() => setActiveTab('console')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'console' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Activity className="w-4 h-4" /> Traffic Console</button>
+        <button onClick={() => {setActiveTab('approvals'); setAppPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ClipboardCheck className="w-4 h-4" /> Approvals <span className="bg-tabler-warning/10 text-tabler-warning px-1.5 rounded-full text-[10px] ml-1">{pendingRequests.length}</span></button>
+        <button onClick={() => {setActiveTab('returns'); setRetPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'returns' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ArrowUpRight className="w-4 h-4" /> Active Borrowings</button>
+        <button onClick={() => {setActiveTab('history'); setHistPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> SAO History</button>
+        {canRead && <button onClick={() => {setActiveTab('inventory'); setInvPage(1);}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'inventory' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Database className="w-4 h-4" /> Book Inventory</button>}
+        {canUpdate && <button onClick={() => setActiveTab('genres')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'genres' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Tags className="w-4 h-4" /> Genres</button>}
       </div>
 
       {['approvals', 'returns', 'history'].includes(activeTab) && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg p-4 shadow-sm">
-          <div className="relative max-w-md">
+          <div className="relative w-full sm:max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-            <input type="text" placeholder="Search by Txn ID, Book, or Student ID..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+            <input type="text" placeholder="Search by Txn ID, Book, or Student ID..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
           </div>
         </div>
       )}
@@ -271,13 +271,13 @@ export default function SaoDashboard() {
 
       {canRead && activeTab === 'inventory' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col min-h-[400px] overflow-hidden animate-in fade-in duration-300">
-          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <Database className="w-5 h-5 text-gray-400 dark:text-tabler-muted" />
-              <input type="text" placeholder="Search database..." value={searchQuery} onChange={(e) => {setSearchQuery(e.target.value); setInvPage(1);}} className="w-64 px-3 py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
+            <div className="relative w-full sm:w-auto">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
+              <input type="text" placeholder="Search database..." value={searchQuery} onChange={(e) => {setSearchQuery(e.target.value); setInvPage(1);}} className="w-full sm:w-64 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
             </div>
             {canCreate && (
-              <button onClick={() => { setEditingItem(null); setItemForm({name:'', inventory_code:'', category:(genres[0]?.name || 'Uncategorized'), status:'Available', image: '', description: ''}); setIsItemModalOpen(true); }} className="px-4 py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center gap-1.5 shadow-sm">
+              <button onClick={() => { setEditingItem(null); setItemForm({name:'', inventory_code:'', category:(genres[0]?.name || 'Uncategorized'), status:'Available', image: '', description: ''}); setIsItemModalOpen(true); }} className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center justify-center gap-1.5 shadow-sm">
                 <Plus className="w-4 h-4" /> Add Book
               </button>
             )}
@@ -303,24 +303,24 @@ export default function SaoDashboard() {
                     </td>
                   </tr>
                 ))}
-                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No books match search.</td></tr>}
+                {paginatedInventory.length === 0 && <tr><td col colSpan="4" className="px-5 py-8 text-center text-gray-500">No books match search.</td></tr>}
               </tbody>
             </table>
           </div>
-          <Pagination page={invPage} setPage={setInvPage} total={filteredInventory.length} />
+          <Pagination page={invPage} setPage={setInvPage} total={filteredInventory.length} perPage={8} />
         </div>
       )}
 
       {canUpdate && activeTab === 'genres' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden animate-in fade-in duration-300 max-w-2xl">
-          <div className="p-5 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
+          <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div>
                <h3 className="font-semibold text-sm">Book Categories (Genres)</h3>
                <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Add or remove genres used in the inventory and discover tabs.</p>
             </div>
-            <form onSubmit={handleGenreSubmit} className="flex items-center gap-2 w-full sm:w-auto">
-              <input type="text" placeholder="New Genre Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="flex-1 px-3 py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
-              <button type="submit" className="px-4 py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Genre</button>
+            <form onSubmit={handleGenreSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <input type="text" placeholder="New Genre Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="w-full sm:flex-1 px-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
+              <button type="submit" className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Genre</button>
             </form>
           </div>
           <ul className="divide-y divide-gray-100 dark:divide-tabler-border max-h-[500px] overflow-y-auto">
@@ -341,7 +341,7 @@ export default function SaoDashboard() {
           <div className="bg-white border rounded-lg shadow-2xl max-w-sm w-full dark:bg-tabler-card dark:border-tabler-border">
             <div className="p-5">
               <p className="text-sm mb-4">Confirm borrowing request for Student ID: <span className="font-mono text-tabler-primary font-bold">{approveTx.student_id}</span></p>
-              <div className="flex justify-end gap-3"><button onClick={() => setApproveModalOpen(false)} className="px-4 py-2 border rounded">Cancel</button><button onClick={handleApprove} className="px-4 py-2 text-white bg-tabler-success rounded">Accept Request</button></div>
+              <div className="flex flex-col sm:flex-row justify-end gap-3"><button onClick={() => setApproveModalOpen(false)} className="w-full sm:w-auto px-4 py-2 border rounded">Cancel</button><button onClick={handleApprove} className="w-full sm:w-auto px-4 py-2 text-white bg-tabler-success rounded">Accept Request</button></div>
             </div>
           </div>
         </div>
@@ -353,7 +353,7 @@ export default function SaoDashboard() {
             <div className="p-5">
               <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Inspect Physical Condition</label>
               <select value={returnCondition} onChange={(e) => setReturnCondition(e.target.value)} className="w-full px-3 py-2 border rounded text-sm outline-none mb-4 dark:bg-tabler-body dark:border-tabler-border"><option value="Available">Good / Available</option><option value="Damaged">Damaged</option></select>
-              <div className="flex justify-end gap-3"><button onClick={() => setReturnModalOpen(false)} className="px-4 py-2 border rounded">Cancel</button><button onClick={handleProcessReturn} className="px-4 py-2 text-white bg-tabler-primary rounded">Confirm Return</button></div>
+              <div className="flex flex-col sm:flex-row justify-end gap-3"><button onClick={() => setReturnModalOpen(false)} className="w-full sm:w-auto px-4 py-2 border rounded">Cancel</button><button onClick={handleProcessReturn} className="w-full sm:w-auto px-4 py-2 text-white bg-tabler-primary rounded">Confirm Return</button></div>
             </div>
           </div>
         </div>
@@ -367,7 +367,7 @@ export default function SaoDashboard() {
               <button onClick={() => setIsItemModalOpen(false)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleItemSubmit}>
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Book Name</label>
                   <input required type="text" value={itemForm.name} onChange={(e) => setItemForm({...itemForm, name: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" />
@@ -400,9 +400,9 @@ export default function SaoDashboard() {
                   </div>
                 )}
               </div>
-              <div className="px-5 py-4 bg-gray-50 border-t flex justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <button type="button" onClick={() => setIsItemModalOpen(false)} className="px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Book</button>
+              <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
+                <button type="button" onClick={() => setIsItemModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
+                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Book</button>
               </div>
             </form>
           </div>

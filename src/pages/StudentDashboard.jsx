@@ -6,11 +6,11 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
   if (totalPages <= 1) return null;
   return (
-    <div className="flex justify-between items-center px-6 py-4 bg-gray-50 dark:bg-tabler-body/50 border-t border-gray-200 dark:border-tabler-border mt-auto">
+    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 bg-gray-50 dark:bg-tabler-body/50 border-t border-gray-200 dark:border-tabler-border mt-auto">
       <span className="text-xs text-gray-500 dark:text-tabler-muted font-medium">Showing {(page-1)*perPage + 1} to {Math.min(page*perPage, total)} of {total}</span>
-      <div className="flex gap-2">
-        <button onClick={() => setPage(page - 1)} disabled={page === 1} className="px-3 py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Prev</button>
-        <button onClick={() => setPage(page + 1)} disabled={page === totalPages} className="px-3 py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Next</button>
+      <div className="flex gap-2 w-full sm:w-auto">
+        <button onClick={() => setPage(page - 1)} disabled={page === 1} className="flex-1 sm:flex-none px-4 py-2 sm:px-3 sm:py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Prev</button>
+        <button onClick={() => setPage(page + 1)} disabled={page === totalPages} className="flex-1 sm:flex-none px-4 py-2 sm:px-3 sm:py-1.5 border border-gray-200 dark:border-tabler-border rounded text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-tabler-body transition-colors">Next</button>
       </div>
     </div>
   );
@@ -158,23 +158,23 @@ export default function StudentDashboard() {
       </div>
 
       <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
-        <div className="flex border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/50">
-          <button onClick={() => setActiveTab('available')} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'available' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><PackageSearch className="w-4 h-4" /> Discover Books</button>
-          <button onClick={() => setActiveTab('active')} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><List className="w-4 h-4" /> Active Requests</button>
-          <button onClick={() => setActiveTab('history')} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> Borrowing History</button>
+        <div className="flex overflow-x-auto scrollbar-hide border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/50">
+          <button onClick={() => setActiveTab('available')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'available' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><PackageSearch className="w-4 h-4" /> Discover Books</button>
+          <button onClick={() => setActiveTab('active')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><List className="w-4 h-4" /> Active Requests</button>
+          <button onClick={() => setActiveTab('history')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> Borrowing History</button>
         </div>
 
         {activeTab === 'available' && (
-          <div className="p-6 flex flex-col flex-1">
+          <div className="p-4 sm:p-6 flex flex-col flex-1">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-nowrap overflow-x-auto scrollbar-hide w-full sm:w-auto gap-2 pb-2 sm:pb-0">
                 {categories.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${activeCategory === cat ? 'bg-tabler-primary border-tabler-primary text-white shadow-sm' : 'bg-white dark:bg-tabler-body border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:hover:text-white'}`}>{cat}</button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${activeCategory === cat ? 'bg-tabler-primary border-tabler-primary text-white shadow-sm' : 'bg-white dark:bg-tabler-body border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:hover:text-white'}`}>{cat}</button>
                 ))}
               </div>
-              <div className="relative max-w-sm w-full sm:w-64">
+              <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search available books..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded-lg text-sm outline-none focus:border-tabler-primary" />
+                <input type="text" placeholder="Search available books..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded-lg text-sm outline-none focus:border-tabler-primary" />
               </div>
             </div>
             
@@ -202,9 +202,9 @@ export default function StudentDashboard() {
         {(activeTab === 'active' || activeTab === 'history') && (
           <div className="flex flex-col flex-1">
             <div className="p-4 border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/30">
-              <div className="relative max-w-sm w-full">
+              <div className="relative w-full sm:max-w-sm">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search by Book Name or Txn ID..." value={txSearchQuery} onChange={(e) => setTxSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
+                <input type="text" placeholder="Search by Book Name or Txn ID..." value={txSearchQuery} onChange={(e) => setTxSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -267,15 +267,15 @@ export default function StudentDashboard() {
       {selectedItem && (
         <div className="fixed inset-0 bg-gray-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="flex flex-col md:flex-row w-full max-w-4xl bg-white dark:bg-tabler-card rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-tabler-border">
-            <div className="md:w-2/5 relative h-64 md:h-auto bg-gray-100 dark:bg-[#182433]">
+            <div className="md:w-2/5 relative h-48 sm:h-64 md:h-auto bg-gray-100 dark:bg-[#182433]">
               <img src={selectedItem.image || 'https://via.placeholder.com/150'} className="absolute inset-0 w-full h-full object-cover" />
               <div className="absolute top-4 left-4 bg-black/60 backdrop-blur text-white px-2 py-1 rounded text-xs font-mono">{selectedItem.inventory_code}</div>
             </div>
-            <div className="md:w-3/5 p-6 md:p-8 flex flex-col">
+            <div className="md:w-3/5 p-4 sm:p-6 md:p-8 flex flex-col max-h-[60vh] md:max-h-none overflow-y-auto">
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <div className="flex items-center gap-1 text-tabler-warning text-sm font-bold mb-1"><Star className="w-4 h-4 fill-current" /> {selectedItem.rating || 5.0} <span className="text-gray-500 font-normal text-xs ml-1">({selectedItem.reviews || 0} Reviews)</span></div>
-                  <h3 className="font-bold text-2xl md:text-3xl leading-tight text-gray-900 dark:text-white">{selectedItem.name}</h3>
+                  <h3 className="font-bold text-xl sm:text-2xl md:text-3xl leading-tight text-gray-900 dark:text-white">{selectedItem.name}</h3>
                 </div>
                 <button onClick={() => setSelectedItem(null)} className="text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-tabler-body rounded-full p-1.5 transition-colors"><X className="w-5 h-5" /></button>
               </div>
@@ -304,9 +304,9 @@ export default function StudentDashboard() {
                 </span>
               </label>
               
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-tabler-border">
-                <button onClick={() => setSelectedItem(null)} className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-tabler-card border rounded hover:bg-gray-50 dark:hover:bg-tabler-border/50">Cancel</button>
-                <button onClick={handleCreateRequest} disabled={!termsAccepted} className="px-6 py-2.5 text-sm font-bold text-white bg-tabler-primary rounded hover:bg-[#1d5fb3] disabled:opacity-50 transition-all shadow-sm flex items-center gap-2"><Bookmark className="w-4 h-4" /> Borrow Request</button>
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-200 dark:border-tabler-border">
+                <button onClick={() => setSelectedItem(null)} className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-tabler-card border rounded hover:bg-gray-50 dark:hover:bg-tabler-border/50">Cancel</button>
+                <button onClick={handleCreateRequest} disabled={!termsAccepted} className="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-white bg-tabler-primary rounded hover:bg-[#1d5fb3] disabled:opacity-50 transition-all shadow-sm flex items-center justify-center gap-2"><Bookmark className="w-4 h-4" /> Borrow Request</button>
               </div>
             </div>
           </div>
