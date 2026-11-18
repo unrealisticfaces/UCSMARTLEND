@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { Library, Eye, EyeOff, ShieldCheck, X, FileText } from 'lucide-react';
 
 export default function Register() {
   const { registerUser, showToast, isLoading, hasAdmin } = useApp();
-  const navigate = useNavigate();
   
   const [name, setName] = useState('');
   const [idNumber, setIdNumber] = useState('');
@@ -14,8 +13,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('student'); 
   const [agree, setAgree] = useState(false);
-  
-  // NEW: Terms Modal State
   const [isTermsOpen, setIsTermsOpen] = useState(false);
 
   const calculateStrength = (pass) => {
@@ -33,13 +30,23 @@ export default function Register() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!agree) return showToast('You must agree to the Terms and Conditions to proceed.', 'warning');
+    if (!agree) {
+      setIsTermsOpen(true);
+      return showToast('Please review and agree to the Terms and Conditions to proceed.', 'warning');
+    }
     if (password.length < 6) return showToast('Password must be at least 6 characters.', 'error');
 
     try {
       await registerUser(name, idNumber, email, password, role);
-      showToast('Account successfully created! Logging you in...');
-      setTimeout(() => navigate('/'), 1000);
+      showToast('Account successfully created! You may now sign in.');
+      
+      // Reset form and remain on the registration page
+      setName('');
+      setIdNumber('');
+      setEmail('');
+      setPassword('');
+      setRole('student');
+      setAgree(false);
     } catch (error) {
       if (error.message === 'admin-exists') showToast('An Administrator already exists. Master account creation is locked.', 'error');
       else if (error.code === 'auth/email-already-in-use') showToast('This email is already registered. Please log in instead.', 'error');
@@ -104,7 +111,7 @@ export default function Register() {
               )}
             </div>
             <div className="flex items-center pt-2">
-              <input type="checkbox" required checked={agree} onChange={(e) => setAgree(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-tabler-primary cursor-pointer" />
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-tabler-primary cursor-pointer" />
               <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                 I agree to the <button type="button" onClick={() => setIsTermsOpen(true)} className="text-tabler-primary font-medium hover:underline outline-none focus:ring-2 focus:ring-tabler-primary/20 rounded">Terms and Conditions</button>.
               </label>
@@ -142,7 +149,7 @@ export default function Register() {
 
               <div>
                 <h4 className="font-bold text-gray-900 dark:text-white mb-1">2. Asset Liability & Damages</h4>
-                <p>All books, modules, and physical items must be returned on or before the expected return date in their original physical condition. The SAO reserves the right to evaluate returning items for damages. If an item is declared lost or damaged, you will be subject to penalties, replacement fees, or clearance holds.</p>
+                <p>All books, calculators, modules, and physical items must be returned on or before the expected return date in their original physical condition. The SAO reserves the right to evaluate returning items for damages. If an item is declared lost or damaged, you will be subject to penalties, replacement fees, or clearance holds.</p>
               </div>
 
               <div>
@@ -152,7 +159,7 @@ export default function Register() {
 
               <div>
                 <h4 className="font-bold text-gray-900 dark:text-white mb-1">4. Data Privacy</h4>
-                <p>In accordance with the Data Privacy Act of 2012, your personal information (Name, Email, and ID Number) will be collected and processed solely for the operational management of the library and SAO records. We will never share or sell your data to third parties.</p>
+                <p>In accordance with the Data Privacy Act of 2012, your personal information (Name, Email, and ID Number) will be collected and processed solely for the operational management of the SAO asset records. We will never share or sell your data to third parties.</p>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { PackageSearch, List, History, X, Search, Star, Bookmark, Calendar } from 'lucide-react';
 
@@ -32,8 +32,6 @@ export default function StudentDashboard() {
   const [activePage, setActivePage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
 
-  const alertedRef = useRef(false);
-
   useEffect(() => { setBooksPage(1); setActivePage(1); setHistoryPage(1); }, [searchQuery, txSearchQuery, activeCategory, activeTab]);
 
   const categories = ['All', ...genres.map(g => g.name)];
@@ -56,7 +54,7 @@ export default function StudentDashboard() {
 
   const filteredItems = inventory.filter(item => {
     if (item.status !== 'Available') return false;
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || (item.author && item.author.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
     return matchesSearch && matchesCategory;
   }).sort((a, b) => (b.rating || 0) - (a.rating || 0));
@@ -78,32 +76,13 @@ export default function StudentDashboard() {
   const paginatedActive = activeBorrowings.slice((activePage - 1) * 8, activePage * 8);
   const paginatedHistory = borrowingHistory.slice((historyPage - 1) * 8, historyPage * 8);
 
-  useEffect(() => {
-    if (!alertedRef.current && activeBorrowings.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
-      let hasAlert = false;
-      activeBorrowings.forEach(tx => {
-        if (tx.status === 'Borrowed' && tx.expected_return_date) {
-          if (tx.expected_return_date < today) {
-            showToast(`URGENT: Your borrowed book (${tx.item_id}) is OVERDUE!`, 'error');
-            hasAlert = true;
-          } else if (tx.expected_return_date === today) {
-            showToast(`REMINDER: Your borrowed book (${tx.item_id}) is due TODAY.`, 'warning');
-            hasAlert = true;
-          }
-        }
-      });
-      if (hasAlert) alertedRef.current = true;
-    }
-  }, [activeBorrowings, showToast]);
-
   const handleCreateRequest = async () => {
     if (!termsAccepted) return;
     if (!returnDate) return showToast('You must select an expected return date.', 'warning');
     
     const checkItem = inventory.find(i => i.id === selectedItem.id);
     if (checkItem.status !== 'Available') {
-      showToast('This item is no longer available.', 'error');
+      showToast('This asset is no longer available.', 'error');
       setSelectedItem(null);
       return;
     }
@@ -130,22 +109,21 @@ export default function StudentDashboard() {
     });
   };
 
-  const firstName = user?.name ? user.name.split(' ')[0] : 'Student';
   const minDate = new Date().toISOString().split('T')[0];
 
   return (
-    <div className="space-y-8 pb-12 font-sans bg-gray-50 dark:bg-tabler-body text-gray-900 dark:text-gray-100 min-h-screen">
+    <div className="space-y-6 sm:space-y-8 pb-12 font-sans bg-gray-50 dark:bg-tabler-body text-gray-900 dark:text-gray-100 min-h-screen">
       <style>{`@keyframes scrollCarousel { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } } .animate-carousel { animation: scrollCarousel 40s linear infinite; }`}</style>
       
-      <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-2xl overflow-hidden shadow-sm relative pt-8 pb-10">
-        <div className="px-8 flex items-center gap-2 mb-6">
+      <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-2xl overflow-hidden shadow-sm relative pt-6 sm:pt-8 pb-8 sm:pb-10">
+        <div className="px-5 sm:px-8 flex items-center gap-2 mb-5 sm:mb-6">
           <Bookmark className="w-5 h-5 text-tabler-primary fill-current" />
-          <h2 className="text-gray-900 dark:text-white text-xl font-bold tracking-tight">Highly Recommended Materials</h2>
+          <h2 className="text-gray-900 dark:text-white text-lg sm:text-xl font-bold tracking-tight">Highly Requested Assets</h2>
         </div>
         <div className="flex overflow-hidden group">
-          <div className="flex space-x-6 px-4 animate-carousel group-hover:[animation-play-state:paused] w-max">
+          <div className="flex space-x-4 sm:space-x-6 px-4 animate-carousel group-hover:[animation-play-state:paused] w-max">
             {[...topBooks, ...topBooks, ...topBooks].map((book, idx) => (
-              <div key={`${book.id}-${idx}`} onClick={() => setSelectedItem(book)} className="w-36 h-56 flex-shrink-0 rounded-xl overflow-hidden cursor-pointer relative group/poster border border-gray-200 dark:border-tabler-border hover:border-tabler-primary/50 transition-all duration-300 hover:shadow-md hover:-translate-y-1">
+              <div key={`${book.id}-${idx}`} onClick={() => setSelectedItem(book)} className="w-32 h-48 sm:w-36 sm:h-56 flex-shrink-0 rounded-xl overflow-hidden cursor-pointer relative group/poster border border-gray-200 dark:border-tabler-border hover:border-tabler-primary/50 transition-all duration-300 hover:shadow-md hover:-translate-y-1">
                 <img src={book.image} alt={book.name} className="w-full h-full object-cover transition-transform duration-500 group-hover/poster:scale-105" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover/poster:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
                   <div className="text-white text-xs font-bold leading-tight mb-1">{book.name}</div>
@@ -158,27 +136,51 @@ export default function StudentDashboard() {
       </div>
 
       <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
-        <div className="flex overflow-x-auto scrollbar-hide border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/50">
-          <button onClick={() => setActiveTab('available')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'available' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><PackageSearch className="w-4 h-4" /> Discover Books</button>
-          <button onClick={() => setActiveTab('active')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><List className="w-4 h-4" /> Active Requests</button>
-          <button onClick={() => setActiveTab('history')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> Borrowing History</button>
+        {/* Responsive 3-Column Mobile App Bar / Desktop Horizontal Tabs */}
+        <div className="grid grid-cols-3 sm:flex border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/50">
+          <button
+            onClick={() => setActiveTab('available')}
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-6 py-3 sm:py-4 text-[11px] sm:text-sm font-medium border-b-2 transition-colors ${activeTab === 'available' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card font-semibold' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+          >
+            <PackageSearch className="w-4 h-4" />
+            <span className="sm:hidden">Discover</span>
+            <span className="hidden sm:inline">Discover Assets</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-6 py-3 sm:py-4 text-[11px] sm:text-sm font-medium border-b-2 transition-colors ${activeTab === 'active' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card font-semibold' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+          >
+            <List className="w-4 h-4" />
+            <span className="sm:hidden">Active</span>
+            <span className="hidden sm:inline">Active Requests</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-6 py-3 sm:py-4 text-[11px] sm:text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-white dark:bg-tabler-card font-semibold' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+          >
+            <History className="w-4 h-4" />
+            <span className="sm:hidden">History</span>
+            <span className="hidden sm:inline">Borrowing History</span>
+          </button>
         </div>
 
         {activeTab === 'available' && (
           <div className="p-4 sm:p-6 flex flex-col flex-1">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <div className="flex flex-nowrap overflow-x-auto scrollbar-hide w-full sm:w-auto gap-2 pb-2 sm:pb-0">
+              <div className="flex flex-nowrap overflow-x-auto scrollbar-hide w-full sm:w-auto gap-2 pb-1 sm:pb-0">
                 {categories.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${activeCategory === cat ? 'bg-tabler-primary border-tabler-primary text-white shadow-sm' : 'bg-white dark:bg-tabler-body border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:hover:text-white'}`}>{cat}</button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`whitespace-nowrap px-3.5 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${activeCategory === cat ? 'bg-tabler-primary border-tabler-primary text-white shadow-sm' : 'bg-white dark:bg-tabler-body border-gray-200 dark:border-tabler-border text-gray-600 dark:text-gray-300 hover:border-gray-300 hover:text-gray-900 dark:hover:text-white'}`}>{cat}</button>
                 ))}
               </div>
               <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search available books..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded-lg text-sm outline-none focus:border-tabler-primary" />
+                <input type="text" placeholder="Search available assets..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded-lg text-sm outline-none focus:border-tabler-primary" />
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
               {paginatedBooks.map(item => (
                 <div key={item.id} className="bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded-xl shadow-sm hover:shadow-md flex flex-col group overflow-hidden hover:-translate-y-1 hover:border-tabler-primary/50 transition-all duration-300 cursor-pointer" onClick={() => setSelectedItem(item)}>
                   <div className="h-48 relative overflow-hidden bg-gray-100 dark:bg-tabler-card">
@@ -187,13 +189,13 @@ export default function StudentDashboard() {
                       <div className="px-2.5 py-1 bg-white/95 dark:bg-tabler-card/90 backdrop-blur rounded text-[10px] font-black text-tabler-success uppercase tracking-wider shadow-sm flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-tabler-success animate-pulse"></span> Available</div>
                     </div>
                   </div>
-                  <div className="p-5 flex-1 flex flex-col">
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col">
                     <div className="text-[10px] text-tabler-primary uppercase tracking-widest font-bold bg-tabler-primary/10 w-max px-2 py-0.5 rounded mb-2">{item.category}</div>
                     <div className="text-base font-bold leading-tight">{item.name}</div>
                   </div>
                 </div>
               ))}
-              {filteredItems.length === 0 && <div className="col-span-full text-center py-10 text-gray-500">No matching books found.</div>}
+              {filteredItems.length === 0 && <div className="col-span-full text-center py-10 text-gray-500">No matching assets found.</div>}
             </div>
             <Pagination page={booksPage} setPage={setBooksPage} total={filteredItems.length} perPage={8} />
           </div>
@@ -204,14 +206,14 @@ export default function StudentDashboard() {
             <div className="p-4 border-b border-gray-200 dark:border-tabler-border bg-gray-50 dark:bg-tabler-body/30">
               <div className="relative w-full sm:max-w-sm">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search by Book Name or Txn ID..." value={txSearchQuery} onChange={(e) => setTxSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
+                <input type="text" placeholder="Search by Asset Name or Txn ID..." value={txSearchQuery} onChange={(e) => setTxSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-gray-50 dark:bg-tabler-body/50 border-b border-gray-200 dark:border-tabler-border">
                   <tr>
-                    <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Book Information</th>
+                    <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Asset Information</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Txn ID</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Date Tracker</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Status</th>
@@ -226,7 +228,7 @@ export default function StudentDashboard() {
                         <td className="px-6 py-4 flex items-center gap-4">
                           <img src={item?.image || 'https://via.placeholder.com/150'} className="w-12 h-12 rounded object-cover border border-gray-200 shadow-sm" />
                           <div>
-                            <div className="font-medium text-base">{item?.name || 'Unknown Book'}</div>
+                            <div className="font-medium text-base">{item?.name || 'Unknown Asset'}</div>
                             <div className="text-gray-500 text-[10px] uppercase tracking-wider mt-0.5">{item?.category} • {item?.inventory_code}</div>
                           </div>
                         </td>
@@ -285,7 +287,7 @@ export default function StudentDashboard() {
               </div>
 
               <div className="bg-gray-50 dark:bg-tabler-body p-4 rounded-lg border border-gray-200 dark:border-tabler-border mb-6">
-                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Librarian's Note</h4>
+                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Custodian's Note</h4>
                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed italic">"{selectedItem.description || 'No additional details provided.'}"</p>
               </div>
 
@@ -300,7 +302,7 @@ export default function StudentDashboard() {
               <label className="flex items-start gap-3 cursor-pointer group p-4 border border-gray-200 dark:border-tabler-border rounded-lg bg-gray-50 dark:bg-tabler-body/50 transition-colors mb-5 mt-auto">
                 <input type="checkbox" className="mt-0.5 rounded border-gray-300 w-4 h-4 cursor-pointer text-tabler-primary" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
                 <span className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed block">
-                  I accept full responsibility for this book. <strong className="text-tabler-warning">Note:</strong> Requesting this item does not reserve it physically. Books are distributed on a first-come, first-served basis at the SAO desk.
+                  I accept full responsibility for this asset. <strong className="text-tabler-warning">Note:</strong> Requesting this item does not reserve it physically. Assets are distributed on a first-come, first-served basis at the SAO desk.
                 </span>
               </label>
               

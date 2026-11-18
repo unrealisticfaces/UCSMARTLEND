@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
-import { Check, AlertTriangle, AlertCircle, Library } from 'lucide-react';
+import { Check, AlertTriangle, AlertCircle, Library, X } from 'lucide-react';
 
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -29,20 +29,26 @@ const GlobalOverlays = () => {
         </div>
       )}
 
-      {/* Global Toast System (Now visible on Login/Register) */}
+      {/* UPGRADED: Modern Non-Blocking Bottom-Right Toast System */}
       {toast && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in pointer-events-auto">
-          <div className="bg-white border rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col items-center text-center dark:bg-tabler-card dark:border-tabler-border animate-in zoom-in-95">
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200] animate-in slide-in-from-bottom-5 sm:slide-in-from-right-8 fade-in duration-300">
+          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-xl p-4 flex items-start gap-4 max-w-sm w-full pointer-events-auto">
+            <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
               toast.type === 'success' ? 'bg-tabler-success/10 text-tabler-success' : 
               toast.type === 'warning' ? 'bg-tabler-warning/10 text-tabler-warning' : 
               'bg-tabler-danger/10 text-tabler-danger'
             }`}>
-              {toast.type === 'success' ? <Check className="w-7 h-7" /> : toast.type === 'warning' ? <AlertTriangle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
+              {toast.type === 'success' ? <Check className="w-5 h-5" /> : toast.type === 'warning' ? <AlertTriangle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
             </div>
-            <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{toast.type === 'success' ? 'Success!' : toast.type === 'warning' ? 'Attention' : 'Error'}</h3>
-            <p className="text-sm text-gray-600 dark:text-tabler-muted mb-8">{toast.message}</p>
-            <button onClick={clearToast} className="w-full py-2.5 bg-gray-100 dark:bg-tabler-body hover:bg-gray-200 dark:hover:bg-tabler-border/50 text-gray-800 dark:text-gray-200 rounded-md text-sm font-bold transition-colors">Continue</button>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                {toast.type === 'success' ? 'Success' : toast.type === 'warning' ? 'Attention' : 'Error'}
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-tabler-muted mt-1 leading-relaxed">{toast.message}</p>
+            </div>
+            <button onClick={clearToast} className="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

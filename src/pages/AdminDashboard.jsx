@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags, TrendingUp, UserPlus } from 'lucide-react';
+import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags, TrendingUp, UserPlus, Settings, Download, Upload, AlertOctagon, Lock, ChevronDown } from 'lucide-react';
 
 const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
@@ -17,9 +17,10 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
 };
 
 export default function AdminDashboard() {
-  const { user, inventory = [], usersList = [], transactions = [], genres = [], addInventoryItem, updateInventoryItem, deleteInventoryItem, updateUserRole, updateUserPermissions, addGenre, deleteGenre, requestConfirm, adminCreateUser, showToast } = useApp();
+  const { user, inventory = [], usersList = [], transactions = [], genres = [], addInventoryItem, updateInventoryItem, deleteInventoryItem, updateUserRole, updateUserPermissions, addGenre, deleteGenre, requestConfirm, adminCreateUser, showToast, verifyPassword, exportDatabase, importDatabase, wipeDatabase } = useApp();
   
   const [activeTab, setActiveTab] = useState('overview'); 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [txSearchQuery, setTxSearchQuery] = useState('');
   
@@ -31,12 +32,26 @@ export default function AdminDashboard() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [userForm, setUserForm] = useState({ name: '', idNumber: '', email: '', password: '', role: 'student' });
 
+  const [secureModal, setSecureModal] = useState({ isOpen: false, action: null, title: '', desc: '' });
+  const [adminPass, setAdminPass] = useState('');
+  const [importFile, setImportFile] = useState(null);
+  const fileInputRef = useRef(null);
+
   const [invPage, setInvPage] = useState(1);
   const [userPage, setUserPage] = useState(1);
   const [txPage, setTxPage] = useState(1);
 
   const [syncedHover, setSyncedHover] = useState(null);
   const [activityHover, setActivityHover] = useState(null);
+
+  const adminTabs = [
+    { id: 'overview', label: 'Analytics Dashboard', icon: LayoutDashboard, onClick: () => { setActiveTab('overview'); setTxPage(1); } },
+    { id: 'inventory', label: 'Asset Database', icon: Database, onClick: () => { setActiveTab('inventory'); setInvPage(1); } },
+    { id: 'users', label: 'User Management', icon: Users, onClick: () => { setActiveTab('users'); setUserPage(1); } },
+    { id: 'genres', label: 'Categories', icon: Tags, onClick: () => setActiveTab('genres') },
+    { id: 'system', label: 'System Config', icon: Settings, onClick: () => setActiveTab('system') }
+  ];
+  const currentTabObj = adminTabs.find(t => t.id === activeTab) || adminTabs[0];
 
   const validInventory = inventory.filter(item => item !== null && item !== undefined);
   const validUsers = usersList.filter(u => u !== null && u !== undefined);
@@ -48,7 +63,6 @@ export default function AdminDashboard() {
     users: validUsers.length
   };
 
-  // UPGRADE: 100% Precise Data (No simulated variance)
   const last30Days = useMemo(() => {
     const days = [];
     const today = new Date();
@@ -65,9 +79,9 @@ export default function AdminDashboard() {
       days.push({ 
         dateStr, 
         displayDate, 
-        requests: dayTxs.length, // Exact total requests
-        borrowed: dayTxs.filter(tx => tx.status === 'Borrowed').length, // Exact active borrowed
-        returned: dayTxs.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).length, // Exact resolved
+        requests: dayTxs.length,
+        borrowed: dayTxs.filter(tx => tx.status === 'Borrowed').length,
+        returned: dayTxs.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).length,
         total: dayTxs.length
       });
     }
@@ -182,7 +196,7 @@ export default function AdminDashboard() {
   const handleGenreSubmit = (e) => {
     e.preventDefault();
     if(newGenre.trim()){ 
-      requestConfirm('Add Genre', `Are you sure you want to add "${newGenre.trim()}" as a new category?`, async () => {
+      requestConfirm('Add Category', `Are you sure you want to add "${newGenre.trim()}" as a new category?`, async () => {
         await addGenre(newGenre.trim()); 
         setNewGenre('');
       });
@@ -194,6 +208,59 @@ export default function AdminDashboard() {
     updateUserPermissions(u.uid, { ...currentPerms, [permKey]: !currentPerms[permKey] });
   };
 
+  const handleSecureActionSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await verifyPassword(adminPass);
+      
+      if (secureModal.action === 'backup') {
+        const data = await exportDatabase();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SmartLend_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Database backup downloaded successfully.');
+      } 
+      else if (secureModal.action === 'import' && importFile) {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const json = JSON.parse(event.target.result);
+            await importDatabase(json);
+            showToast('Database imported successfully.');
+            setImportFile(null);
+          } catch (err) {
+            showToast('Invalid JSON file format.', 'error');
+          }
+        };
+        reader.readAsText(importFile);
+      } 
+      else if (secureModal.action === 'wipe') {
+        await wipeDatabase();
+        showToast('Operational database wiped successfully.', 'warning');
+      }
+
+      setSecureModal({ isOpen: false, action: null, title: '', desc: '' });
+      setAdminPass('');
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  };
+
+  const triggerImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportFile(file);
+    setSecureModal({ 
+      isOpen: true, action: 'import', title: 'Import Database', 
+      desc: `Please enter your password to authorize overwriting the database with "${file.name}".` 
+    });
+    e.target.value = null;
+  };
+
   return (
     <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -203,11 +270,56 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex overflow-x-auto scrollbar-hide">
-        <button onClick={() => {setActiveTab('overview'); setTxPage(1);}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 dark:text-tabler-muted hover:text-gray-900 dark:hover:text-white'}`}><LayoutDashboard className="w-4 h-4" /> Analytics Dashboard</button>
-        <button onClick={() => {setActiveTab('inventory'); setInvPage(1);}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'inventory' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 dark:text-tabler-muted hover:text-gray-900 dark:hover:text-white'}`}><Database className="w-4 h-4" /> Book Database</button>
-        <button onClick={() => {setActiveTab('users'); setUserPage(1);}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'users' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 dark:text-tabler-muted hover:text-gray-900 dark:hover:text-white'}`}><Users className="w-4 h-4" /> User Management</button>
-        <button onClick={() => setActiveTab('genres')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'genres' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 dark:text-tabler-muted hover:text-gray-900 dark:hover:text-white'}`}><Tags className="w-4 h-4" /> Genres</button>
+      {/* Responsive Navigation: Dropdown on Mobile, Tab Bar on Desktop */}
+      <div className="relative md:hidden">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="w-full flex items-center justify-between px-4 py-3.5 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm text-sm font-semibold text-gray-900 dark:text-white"
+        >
+          <span className="flex items-center gap-2.5 text-tabler-primary">
+            <currentTabObj.icon className="w-4 h-4" />
+            {currentTabObj.label}
+          </span>
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${mobileMenuOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {mobileMenuOpen && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMobileMenuOpen(false)}></div>
+            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-xl z-40 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              {adminTabs.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => { tab.onClick(); setMobileMenuOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-tabler-primary/10 text-tabler-primary font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-tabler-body'}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="hidden md:flex bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-x-auto scrollbar-hide">
+        {adminTabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={tab.onClick}
+              className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${isActive ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 dark:text-tabler-muted hover:text-gray-900 dark:hover:text-white'}`}
+            >
+              <Icon className="w-4 h-4" /> {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {activeTab === 'overview' && (
@@ -215,7 +327,7 @@ export default function AdminDashboard() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { id: 'stat-books', label: 'Total Books', val: stats.total, color: 'text-tabler-success', icon: Package, fill: 'bg-tabler-primary' },
+              { id: 'stat-assets', label: 'Total Assets', val: stats.total, color: 'text-tabler-success', icon: Package, fill: 'bg-tabler-primary' },
               { id: 'stat-avail', label: 'Available', val: stats.available, color: 'text-tabler-success', icon: ShieldCheck, fill: 'bg-[#2fb344]' },
               { id: 'stat-borrowed', label: 'Borrowed', val: stats.borrowed, color: 'text-tabler-warning', icon: RefreshCcw, fill: 'bg-tabler-warning' },
               { id: 'stat-users', label: 'System Users', val: stats.users, color: 'text-tabler-success', icon: Users, fill: 'bg-purple-500' }
@@ -235,7 +347,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-            
             <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 relative">
               <div className="flex justify-between items-center mb-6 relative z-30">
                 <h3 className="font-semibold text-sm">Synced Operations Charts</h3>
@@ -245,7 +356,6 @@ export default function AdminDashboard() {
               </div>
 
               <div className="relative w-full flex flex-col">
-                
                 <div className="absolute top-0 left-0 right-0 bottom-8 z-40 flex">
                   {last30Days.map((day, i) => (
                     <div 
@@ -259,7 +369,6 @@ export default function AdminDashboard() {
                   ))}
                 </div>
 
-                {/* CHART 1: Requests (Blue Area Spline) */}
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
                   <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
                     <defs>
@@ -277,7 +386,6 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                {/* CHART 2: Borrowed (Green Line Spline) */}
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
                   <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
                     <path d={borrowedPath} fill="none" stroke="#2fb344" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -291,7 +399,6 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                {/* CHART 3: Resolved (Blue Bar Chart) */}
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2">
                   <div className="absolute inset-0 flex items-end justify-between px-1">
                     {last30Days.map((day, i) => (
@@ -319,7 +426,6 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
-
               </div>
             </div>
 
@@ -328,14 +434,12 @@ export default function AdminDashboard() {
                 <h3 className="font-semibold text-sm">Asset Distribution</h3>
                 <span className="text-[10px] font-bold tracking-widest uppercase bg-gray-100 dark:bg-tabler-body/50 px-2 py-1 rounded text-gray-500">{invStats.total} Total</span>
               </div>
-
               <div className="w-full h-3.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex mb-8 shadow-inner">
                 <div style={{width: `${invStats.avail.pct}%`}} className="h-full bg-[#2fb344] transition-all duration-1000"></div>
                 <div style={{width: `${invStats.borrowed.pct}%`}} className="h-full bg-[#206bc4] transition-all duration-1000 border-l border-white/20"></div>
                 <div style={{width: `${invStats.pending.pct}%`}} className="h-full bg-[#f59f00] transition-all duration-1000 border-l border-white/20"></div>
                 <div style={{width: `${invStats.issues.pct}%`}} className="h-full bg-[#d63939] transition-all duration-1000 border-l border-white/20"></div>
               </div>
-
               <div className="space-y-5 flex-1 mt-2">
                 {[
                   { label: 'Available (On Shelf)', stat: invStats.avail },
@@ -388,7 +492,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="relative w-full sm:w-auto">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                  <input type="text" placeholder="Search logs (Txn ID, Book, User)..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setTxPage(1);}} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-gray-50 dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+                  <input type="text" placeholder="Search logs (Txn ID, Asset, User)..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setTxPage(1);}} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-gray-50 dark:bg-tabler-body border border-gray-200 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
                 </div>
               </div>
               
@@ -436,15 +540,11 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
                     {paginatedTxs.map(tx => {
                       const item = inventory.find(i => i?.id === tx.item_id);
-                      const studentInfo = validUsers.find(u => u.id === tx.student_id);
                       return (
                         <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
                           <td className="px-5 py-3 flex items-center gap-3">
                             <div className="w-7 h-7 rounded-full bg-tabler-primary/10 text-tabler-primary flex items-center justify-center text-[10px] font-bold">{tx.student_id ? tx.student_id.substring(0,2).toUpperCase() : 'U'}</div>
-                            <div>
-                              <div className="font-mono font-medium">{tx.student_id}</div>
-                              <div className="text-[10px] text-gray-500">{studentInfo?.name || 'Unknown'}</div>
-                            </div>
+                            <span className="font-mono font-medium">{tx.student_id}</span>
                           </td>
                           <td className="px-5 py-3 text-gray-600 dark:text-tabler-muted">
                             <span className="font-mono text-[10px] mr-2 text-gray-400">{tx.transaction_id}</span>
@@ -468,7 +568,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Book Database Tab */}
+      {/* Asset Database Tab */}
       {activeTab === 'inventory' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col overflow-hidden animate-in fade-in">
           <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
@@ -478,12 +578,12 @@ export default function AdminDashboard() {
                 <input type="text" placeholder="Search database..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setInvPage(1); }} className="w-full sm:w-64 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
               </div>
             </div>
-            <button onClick={() => { setEditingItem(null); setItemForm({name:'', inventory_code:'', category:(genres[0]?.name || 'Uncategorized'), status:'Available', image: '', description: ''}); setIsItemModalOpen(true); }} className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center justify-center gap-1.5"><Plus className="w-4 h-4" /> Add Book</button>
+            <button onClick={() => { setEditingItem(null); setItemForm({name:'', inventory_code:'', category:(genres[0]?.name || 'Uncategorized'), status:'Available', image: '', description: ''}); setIsItemModalOpen(true); }} className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center justify-center gap-1.5"><Plus className="w-4 h-4" /> Add Asset</button>
           </div>
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-gray-50 dark:bg-tabler-body/50 border-b border-gray-200 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Category</th><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Status</th><th className="px-5 py-3 text-right"></th></tr>
+                <tr><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Asset Name</th><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Category</th><th className="px-5 py-3 font-semibold text-gray-500 dark:text-tabler-muted text-[10px] uppercase">Status</th><th className="px-5 py-3 text-right"></th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
                 {paginatedInventory.map((item, index) => (
@@ -494,12 +594,12 @@ export default function AdminDashboard() {
                     <td className="px-5 py-3 text-right">
                       <div className="inline-flex items-center bg-white dark:bg-tabler-body border dark:border-tabler-border rounded overflow-hidden">
                         <button onClick={() => { setEditingItem(item); setItemForm(item); setIsItemModalOpen(true); }} className="px-3 py-1.5 text-gray-500 hover:text-tabler-primary border-r dark:border-tabler-border"><Edit className="w-3.5 h-3.5"/></button>
-                        <button onClick={() => requestConfirm('Delete Book', `Permanently delete "${item.name}" from the system?`, () => deleteInventoryItem(item.id))} className="px-3 py-1.5 text-gray-500 hover:text-tabler-danger"><Trash2 className="w-3.5 h-3.5"/></button>
+                        <button onClick={() => requestConfirm('Delete Asset', `Permanently delete "${item.name}" from the system?`, () => deleteInventoryItem(item.id))} className="px-3 py-1.5 text-gray-500 hover:text-tabler-danger"><Trash2 className="w-3.5 h-3.5"/></button>
                       </div>
                     </td>
                   </tr>
                 ))}
-                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No books found in inventory.</td></tr>}
+                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No assets found in inventory.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -579,43 +679,80 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Genres Tab */}
+      {/* Asset Categories Tab */}
       {activeTab === 'genres' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden animate-in fade-in duration-300 max-w-2xl">
           <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div>
-               <h3 className="font-semibold text-sm">Book Categories (Genres)</h3>
-               <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Add or remove genres used in the inventory and discover tabs.</p>
+               <h3 className="font-semibold text-sm">Asset Categories</h3>
+               <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Add or remove categories used in the inventory and discover tabs.</p>
             </div>
             <form onSubmit={handleGenreSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <input type="text" placeholder="New Genre Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="w-full sm:flex-1 px-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
-              <button type="submit" className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Genre</button>
+              <input type="text" placeholder="New Category Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="w-full sm:flex-1 px-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
+              <button type="submit" className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Category</button>
             </form>
           </div>
           <ul className="divide-y divide-gray-100 dark:divide-tabler-border max-h-[500px] overflow-y-auto">
             {genres.map(g => (
               <li key={g.id} className="px-5 py-3 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
                 <span className="text-sm font-medium">{g.name}</span>
-                <button onClick={() => requestConfirm('Delete Genre', `Are you sure you want to remove "${g.name}" from the system?`, () => deleteGenre(g.id))} className="p-1.5 text-gray-400 hover:text-tabler-danger hover:bg-red-50 dark:hover:bg-tabler-danger/10 rounded"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => requestConfirm('Delete Category', `Are you sure you want to remove "${g.name}" from the system?`, () => deleteGenre(g.id))} className="p-1.5 text-gray-400 hover:text-tabler-danger hover:bg-red-50 dark:hover:bg-tabler-danger/10 rounded"><Trash2 className="w-4 h-4" /></button>
               </li>
             ))}
-            {genres.length === 0 && <li className="px-5 py-6 text-center text-sm text-gray-500">No genres found. Add one above.</li>}
+            {genres.length === 0 && <li className="px-5 py-6 text-center text-sm text-gray-500">No categories found. Add one above.</li>}
           </ul>
         </div>
       )}
 
-      {/* Item Modal */}
+      {/* System Config Tab */}
+      {activeTab === 'system' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col max-w-4xl">
+            <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-tabler-border bg-gray-50/50 dark:bg-tabler-body/30">
+              <h3 className="font-semibold text-sm">System Database Management</h3>
+              <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Export, restore, or wipe operational databases securely.</p>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <div className="bg-gray-50 dark:bg-tabler-body/50 border border-gray-200 dark:border-tabler-border rounded-lg p-5 flex flex-col">
+                <div className="w-10 h-10 rounded-full bg-tabler-primary/10 text-tabler-primary flex items-center justify-center mb-4"><Download className="w-5 h-5" /></div>
+                <h4 className="font-bold text-sm text-gray-900 dark:text-white mb-2">Backup Database</h4>
+                <p className="text-xs text-gray-500 dark:text-tabler-muted mb-6 flex-1">Download a complete JSON snapshot of all system tables, assets, and user logs.</p>
+                <button onClick={() => setSecureModal({ isOpen: true, action: 'backup', title: 'Authorize Backup', desc: 'Please enter your Admin password to securely export the database.' })} className="w-full px-4 py-2 bg-white dark:bg-tabler-card border border-gray-300 dark:border-tabler-border rounded text-sm font-medium hover:bg-gray-100 dark:hover:bg-tabler-border transition-colors shadow-sm">Export Data</button>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-tabler-body/50 border border-gray-200 dark:border-tabler-border rounded-lg p-5 flex flex-col">
+                <div className="w-10 h-10 rounded-full bg-[#2fb344]/10 text-[#2fb344] flex items-center justify-center mb-4"><Upload className="w-5 h-5" /></div>
+                <h4 className="font-bold text-sm text-gray-900 dark:text-white mb-2">Import Database</h4>
+                <p className="text-xs text-gray-500 dark:text-tabler-muted mb-6 flex-1">Restore a previously downloaded JSON snapshot. Overwrites existing operational data.</p>
+                <input type="file" ref={fileInputRef} onChange={triggerImport} accept=".json" className="hidden" />
+                <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-2 bg-white dark:bg-tabler-card border border-gray-300 dark:border-tabler-border rounded text-sm font-medium hover:bg-gray-100 dark:hover:bg-tabler-border transition-colors shadow-sm">Upload JSON File</button>
+              </div>
+
+              <div className="bg-red-50 dark:bg-tabler-danger/5 border border-red-200 dark:border-tabler-danger/20 rounded-lg p-5 flex flex-col">
+                <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 dark:bg-tabler-danger/20 dark:text-tabler-danger flex items-center justify-center mb-4"><AlertOctagon className="w-5 h-5" /></div>
+                <h4 className="font-bold text-sm text-red-800 dark:text-tabler-danger mb-2">Factory Wipe</h4>
+                <p className="text-xs text-red-600/80 dark:text-tabler-danger/70 mb-6 flex-1">Permanently deletes all assets, transactions, and categories. (User accounts remain active).</p>
+                <button onClick={() => setSecureModal({ isOpen: true, action: 'wipe', title: 'Authorize Wipe', desc: 'WARNING: This will permanently delete all operational data. Enter your password to proceed.' })} className="w-full px-4 py-2 bg-red-600 text-white rounded text-sm font-bold hover:bg-red-700 transition-colors shadow-sm">Wipe Database</button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Asset Form Modal */}
       {isItemModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-200 dark:border-tabler-border flex justify-between items-center bg-gray-50 dark:bg-tabler-body/50">
-              <h3 className="font-semibold text-sm">{editingItem ? 'Edit Book Data' : 'Provision New Book'}</h3>
+              <h3 className="font-semibold text-sm">{editingItem ? 'Edit Asset Data' : 'Provision New Asset'}</h3>
               <button onClick={() => setIsItemModalOpen(false)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleItemSubmit}>
               <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Book Name</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Asset Name</label>
                   <input required type="text" value={itemForm.name} onChange={(e) => setItemForm({...itemForm, name: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" />
                 </div>
                 <div>
@@ -623,10 +760,10 @@ export default function AdminDashboard() {
                   <input required type="text" value={itemForm.inventory_code} onChange={(e) => setItemForm({...itemForm, inventory_code: e.target.value})} className="w-full px-3 py-2 border rounded text-sm uppercase outline-none font-mono dark:bg-tabler-body dark:border-tabler-border" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Category (Genre)</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Category</label>
                   <select value={itemForm.category} onChange={(e) => setItemForm({...itemForm, category: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border">
                     {genres.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
-                    {genres.length === 0 && <option value="Uncategorized">Uncategorized (Add via Genres Tab)</option>}
+                    {genres.length === 0 && <option value="Uncategorized">Uncategorized (Add via Categories Tab)</option>}
                   </select>
                 </div>
                 <div>
@@ -648,14 +785,14 @@ export default function AdminDashboard() {
               </div>
               <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
                 <button type="button" onClick={() => setIsItemModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
-                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Book</button>
+                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Asset</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* NEW: Admin User Creation Modal */}
+      {/* Admin User Creation Modal */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
@@ -693,6 +830,29 @@ export default function AdminDashboard() {
               <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
                 <button type="button" onClick={() => setIsUserModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
                 <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Secure Authentication Modal for Database Actions */}
+      {secureModal.isOpen && (
+        <div className="fixed inset-0 bg-gray-900/70 dark:bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-tabler-border flex items-center gap-3 bg-gray-50 dark:bg-tabler-body/50">
+              <Lock className="w-5 h-5 text-tabler-primary" />
+              <h3 className="font-semibold text-sm">{secureModal.title}</h3>
+            </div>
+            <form onSubmit={handleSecureActionSubmit}>
+              <div className="p-5">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">{secureModal.desc}</p>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Admin Password</label>
+                <input required type="password" autoFocus value={adminPass} onChange={(e) => setAdminPass(e.target.value)} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border focus:border-tabler-primary transition-colors" placeholder="Enter password to verify" />
+              </div>
+              <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
+                <button type="button" onClick={() => { setSecureModal({isOpen: false, action: null, title: '', desc: ''}); setAdminPass(''); setImportFile(null); }} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
+                <button type="submit" className={`w-full sm:w-auto px-4 py-2 text-sm font-bold text-white rounded transition-colors shadow-sm ${secureModal.action === 'wipe' ? 'bg-red-600 hover:bg-red-700' : 'bg-tabler-primary hover:bg-[#1d5fb3]'}`}>Authorize</button>
               </div>
             </form>
           </div>

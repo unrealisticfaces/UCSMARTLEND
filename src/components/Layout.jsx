@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { useState } from 'react';
 
 export default function Layout() {
-  const { user, logout, isDarkMode, setIsDarkMode, notifications, markNotificationsRead, isLoading, transactions, inventory, confirmConfig, cancelConfirm, executeConfirm } = useApp();
+  const { user, logout, isDarkMode, setIsDarkMode, notifications, markNotificationsRead, clearAllNotifications, isLoading, transactions, inventory, confirmConfig, cancelConfirm, executeConfirm } = useApp();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -38,22 +38,22 @@ export default function Layout() {
 
       <header className="bg-white dark:bg-tabler-card border-b border-gray-200 dark:border-tabler-border sticky top-0 z-40 shadow-sm">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4 sm:gap-8">
+          <div className="flex items-center gap-3 sm:gap-8">
             <Link to={user ? `/${user.role}` : '/login'} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <div className="bg-gradient-to-br from-tabler-primary to-[#8b5cf6] text-white p-1.5 rounded-lg shadow-md"><Library className="w-5 h-5" /></div>
-              <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-tabler-primary to-[#8b5cf6] tracking-tight hidden sm:block">SmartLend</span>
+              <span className="text-lg sm:text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-tabler-primary to-[#8b5cf6] tracking-tight">SmartLend</span>
             </Link>
 
             {user && (
               <nav className="flex items-center">
-                <button onClick={() => { setIsCalendarOpen(true); setSelectedDateTxs([]); setSelectedDateStr(''); }} className="flex items-center gap-2 px-2 sm:px-3 py-2 text-sm font-medium text-gray-600 dark:text-tabler-muted hover:bg-gray-50 dark:hover:bg-tabler-body rounded-md transition-colors">
+                <button onClick={() => { setIsCalendarOpen(true); setSelectedDateTxs([]); setSelectedDateStr(''); }} className="flex items-center gap-2 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-600 dark:text-tabler-muted hover:bg-gray-50 dark:hover:bg-tabler-body rounded-md transition-colors" title="Live Schedule">
                   <Calendar className="w-4 h-4" /> <span className="hidden sm:block">Live Schedule</span>
                 </button>
               </nav>
             )}
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-4">
             <button onClick={() => setIsDarkMode(!isDarkMode)} className="text-gray-500 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-tabler-border/30">
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
@@ -68,8 +68,13 @@ export default function Layout() {
                   {notifOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)}></div>
-                      <div className="absolute right-0 sm:-right-4 mt-2 w-72 sm:w-80 bg-white dark:bg-tabler-card border rounded-md shadow-2xl z-50 overflow-hidden dark:border-tabler-border animate-in fade-in slide-in-from-top-2">
-                        <div className="px-4 py-3 border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border"><h3 className="font-semibold text-sm">Notifications</h3></div>
+                      <div className="fixed left-4 right-4 top-[4.25rem] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 bg-white dark:bg-tabler-card border rounded-lg sm:rounded-md shadow-2xl z-50 overflow-hidden dark:border-tabler-border animate-in fade-in slide-in-from-top-2">
+                        <div className="px-4 py-3 border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border flex justify-between items-center">
+                          <h3 className="font-semibold text-sm">Notifications</h3>
+                          {notifications.length > 0 && (
+                            <button onClick={clearAllNotifications} className="text-[10px] font-bold text-gray-500 hover:text-tabler-danger uppercase tracking-wider transition-colors">Clear All</button>
+                          )}
+                        </div>
                         <div className="max-h-80 overflow-y-auto">
                           {notifications.length === 0 ? <div className="p-4 text-center text-sm text-gray-500">No new notifications.</div> : notifications.map(n => (
                             <div key={n.id} className={`p-4 border-b hover:bg-gray-50 dark:hover:bg-tabler-body/50 dark:border-tabler-border/50 ${!n.read ? 'bg-blue-50/50 dark:bg-tabler-primary/5' : ''}`}>
@@ -104,11 +109,10 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex-1">
+      <main className="max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 flex-1">
         <Outlet />
       </main>
 
-      {/* GLOBAL CONFIRMATION MODAL */}
       {confirmConfig.isOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white border rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col items-center text-center dark:bg-tabler-card dark:border-tabler-border animate-in zoom-in-95">
@@ -125,7 +129,6 @@ export default function Layout() {
         </div>
       )}
 
-      {/* TRACKER CALENDAR */}
       {isCalendarOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-6xl w-full h-full sm:h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -193,7 +196,7 @@ export default function Layout() {
                             <div className="flex gap-3 items-center">
                               <img src={item?.image || 'https://via.placeholder.com/150'} className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover border border-gray-100 dark:border-tabler-border" />
                               <div>
-                                <div className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white leading-tight line-clamp-1">{item?.name || 'Unknown Book'}</div>
+                                <div className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white leading-tight line-clamp-1">{item?.name || 'Unknown Asset'}</div>
                                 <div className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-1">Reserved by: <span className="font-mono text-tabler-primary font-semibold">{tx.student_id}</span></div>
                               </div>
                             </div>

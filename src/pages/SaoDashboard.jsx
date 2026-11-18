@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Check, ArrowRightLeft, X, Activity, ClipboardCheck, ArrowUpRight, Ban, History, Database, Search, Plus, Edit, Trash2, Tags } from 'lucide-react';
+import { Check, ArrowRightLeft, X, LayoutDashboard, ClipboardCheck, ArrowUpRight, Ban, History, Database, Search, Plus, Edit, Trash2, Tags, AlertCircle, Clock, ChevronDown } from 'lucide-react';
 
 const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
@@ -18,12 +18,12 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
 
 export default function SaoDashboard() {
   const { transactions, updateTransaction, inventory, usersList, addInventoryItem, updateInventoryItem, deleteInventoryItem, genres, addGenre, deleteGenre, showToast, user, requestConfirm } = useApp();
-  const [activeTab, setActiveTab] = useState('console'); 
+  const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [approveTx, setApproveTx] = useState(null);
 
-  // UPGRADE: Two explicit states for processing returns
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnTx, setReturnTx] = useState(null);
   const [returnAction, setReturnAction] = useState('Returned');
@@ -41,16 +41,12 @@ export default function SaoDashboard() {
   const [retPage, setRetPage] = useState(1);
   const [histPage, setHistPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
-  
-  // Hover State for new Synced Charts
-  const [syncedHover, setSyncedHover] = useState(null);
 
   const canRead = user?.permissions?.read;
   const canCreate = user?.permissions?.create;
   const canUpdate = user?.permissions?.update;
   const canDelete = user?.permissions?.delete;
 
-  // Global Search logic (Matches Txn ID, Student ID, Item Name, or Student Name)
   const filterTx = (tx) => {
     if (!txSearchQuery) return true;
     const q = txSearchQuery.toLowerCase();
@@ -68,6 +64,16 @@ export default function SaoDashboard() {
   const activeBorrowings = transactions.filter(tx => tx.status === 'Borrowed').filter(filterTx);
   const transactionHistory = transactions.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).filter(filterTx);
 
+  const saoTabs = [
+    { id: 'dashboard', label: 'SAO Dashboard', icon: LayoutDashboard, onClick: () => setActiveTab('dashboard') },
+    { id: 'approvals', label: 'Approvals', icon: ClipboardCheck, badge: pendingRequests.length, onClick: () => { setActiveTab('approvals'); setAppPage(1); setTxSearchQuery(''); } },
+    { id: 'returns', label: 'Active Borrowings', icon: ArrowUpRight, onClick: () => { setActiveTab('returns'); setRetPage(1); setTxSearchQuery(''); } },
+    { id: 'history', label: 'SAO History', icon: History, onClick: () => { setActiveTab('history'); setHistPage(1); setTxSearchQuery(''); } },
+    ...(canRead ? [{ id: 'inventory', label: 'Asset Inventory', icon: Database, onClick: () => { setActiveTab('inventory'); setInvPage(1); } }] : []),
+    ...(canUpdate ? [{ id: 'genres', label: 'Categories', icon: Tags, onClick: () => setActiveTab('genres') }] : [])
+  ];
+  const currentTabObj = saoTabs.find(t => t.id === activeTab) || saoTabs[0];
+
   const validInventory = inventory.filter(item => item !== null && item !== undefined);
   const filteredInventory = validInventory.filter(item => {
     if (!item) return false;
@@ -83,57 +89,54 @@ export default function SaoDashboard() {
   const paginatedHistory = transactionHistory.slice((histPage - 1) * 8, histPage * 8);
   const paginatedInventory = filteredInventory.slice((invPage - 1) * 8, invPage * 8);
 
-  // UPGRADE: Precise 30-Day Data Generator for SAO Synced Charts
-  const last30Days = useMemo(() => {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const saoStats = {
+    pendingCount: transactions.filter(tx => tx.status === 'Pending').length,
+    activeCount: transactions.filter(tx => tx.status === 'Borrowed').length,
+    todayRequests: transactions.filter(tx => tx.request_date === todayStr).length,
+    attentionItems: validInventory.filter(i => i.status === 'Damaged' || i.status === 'Maintenance').length
+  };
+
+  const invStats = useMemo(() => {
+    const total = validInventory.length || 1;
+    const avail = validInventory.filter(i => i.status === 'Available').length;
+    const borrowed = validInventory.filter(i => i.status === 'Borrowed').length;
+    const pending = validInventory.filter(i => i.status === 'Pending').length;
+    const issues = validInventory.filter(i => i.status === 'Damaged' || i.status === 'Maintenance').length;
+    
+    return {
+      total: validInventory.length,
+      avail: { count: avail, pct: (avail/total)*100, color: 'bg-[#2fb344]' },
+      borrowed: { count: borrowed, pct: (borrowed/total)*100, color: 'bg-[#206bc4]' },
+      pending: { count: pending, pct: (pending/total)*100, color: 'bg-[#f59f00]' },
+      issues: { count: issues, pct: (issues/total)*100, color: 'bg-[#d63939]' }
+    };
+  }, [validInventory]);
+
+  const last7Days = useMemo(() => {
     const days = [];
     const today = new Date();
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     
-    for (let i = 29; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const displayDate = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]}`;
+      const dayName = i === 0 ? "Today" : shortDays[d.getDay()];
       
       const dayTxs = transactions.filter(tx => tx.request_date === dateStr);
-      
       days.push({
         dateStr,
-        displayDate,
-        requests: dayTxs.length,
-        borrowed: dayTxs.filter(tx => tx.status === 'Borrowed').length,
+        dayName,
+        borrowed: dayTxs.filter(tx => tx.status === 'Pending' || tx.status === 'Borrowed').length,
         returned: dayTxs.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).length,
       });
     }
     return days;
   }, [transactions]);
 
-  // Monotone Cubic Bezier Builder
-  const buildSmoothPath = (dataArray, maxVal, invertY = false) => {
-    if(dataArray.length === 0) return '';
-    const safeMax = Math.max(maxVal, 1);
-    
-    const points = dataArray.map((val, i) => ({
-      x: (i / (dataArray.length - 1)) * 1000,
-      y: invertY ? (val / safeMax) * 85 + 10 : 95 - (val / safeMax) * 85 
-    }));
-
-    let d = `M ${points[0].x},${points[0].y}`;
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const cpX1 = p1.x + (p2.x - p1.x) * 0.4;
-      const cpX2 = p2.x - (p2.x - p1.x) * 0.4;
-      d += ` C ${cpX1},${p1.y} ${cpX2},${p2.y} ${p2.x},${p2.y}`;
-    }
-    return d;
-  };
-
-  const maxRequests = Math.max(...last30Days.map(d => d.requests), 5);
-  const maxReturned = Math.max(...last30Days.map(d => d.returned), 5);
-
-  const requestsPath = buildSmoothPath(last30Days.map(d => d.requests), maxRequests);
-  const borrowedPath = buildSmoothPath(last30Days.map(d => d.borrowed), maxRequests);
+  const maxDeskTraffic = Math.max(...last7Days.map(d => Math.max(d.borrowed, d.returned)), 5);
+  const liveQueue = [...pendingRequests, ...activeBorrowings].slice(0, 5);
 
   const handleItemSubmit = async (e) => {
     e.preventDefault();
@@ -150,7 +153,7 @@ export default function SaoDashboard() {
   const handleGenreSubmit = (e) => {
     e.preventDefault();
     if(newGenre.trim()){ 
-      requestConfirm('Add Genre', `Are you sure you want to add "${newGenre.trim()}" as a new category?`, async () => {
+      requestConfirm('Add Category', `Are you sure you want to add "${newGenre.trim()}" as a new category?`, async () => {
         await addGenre(newGenre.trim()); 
         setNewGenre('');
       });
@@ -176,12 +179,11 @@ export default function SaoDashboard() {
 
   const openReturnModal = (tx) => { 
     setReturnTx(tx); 
-    setReturnAction('Returned'); // Default action
-    setReturnCondition('Available'); // Default physical condition
+    setReturnAction('Returned');
+    setReturnCondition('Available');
     setReturnModalOpen(true); 
   };
   
-  // UPGRADE: Processes both the Transaction state AND the Item physical state
   const handleProcessReturn = async () => {
     try {
       await updateTransaction(returnTx.transaction_id, { status: returnAction, processed_by: user.uid });
@@ -200,118 +202,219 @@ export default function SaoDashboard() {
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">SAO Operations Desk</h2>
-          <p className="text-sm text-gray-500 dark:text-tabler-muted mt-1">Review requests, decline unauthorized borrowings, and process returns.</p>
+          <p className="text-sm text-gray-500 dark:text-tabler-muted mt-1">Review requests, process physical returns, and manage system assets.</p>
         </div>
       </div>
+
+      {/* Responsive Navigation: Dropdown on Mobile, Tab Bar on Desktop */}
+      <div className="relative md:hidden">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="w-full flex items-center justify-between px-4 py-3.5 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm text-sm font-semibold text-gray-900 dark:text-white"
+        >
+          <span className="flex items-center gap-2.5 text-tabler-primary">
+            <currentTabObj.icon className="w-4 h-4" />
+            {currentTabObj.label}
+            {currentTabObj.badge !== undefined && (
+              <span className="bg-tabler-warning/10 text-tabler-warning px-2 py-0.5 rounded-full text-[10px] font-bold">{currentTabObj.badge}</span>
+            )}
+          </span>
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${mobileMenuOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {mobileMenuOpen && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMobileMenuOpen(false)}></div>
+            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-xl z-40 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              {saoTabs.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => { tab.onClick(); setMobileMenuOpen(false); }}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-tabler-primary/10 text-tabler-primary font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-tabler-body'}`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon className="w-4 h-4" />
+                      {tab.label}
+                    </span>
+                    {tab.badge !== undefined && (
+                      <span className="bg-tabler-warning/10 text-tabler-warning px-2 py-0.5 rounded-full text-[10px] font-bold">{tab.badge}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
       
-      <div className="bg-white dark:bg-tabler-card border rounded-lg shadow-sm flex overflow-x-auto scrollbar-hide border-gray-200 dark:border-tabler-border">
-        <button onClick={() => setActiveTab('console')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'console' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Activity className="w-4 h-4" /> Traffic Console</button>
-        <button onClick={() => {setActiveTab('approvals'); setAppPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ClipboardCheck className="w-4 h-4" /> Approvals <span className="bg-tabler-warning/10 text-tabler-warning px-1.5 rounded-full text-[10px] ml-1">{pendingRequests.length}</span></button>
-        <button onClick={() => {setActiveTab('returns'); setRetPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'returns' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><ArrowUpRight className="w-4 h-4" /> Active Borrowings</button>
-        <button onClick={() => {setActiveTab('history'); setHistPage(1); setTxSearchQuery('');}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><History className="w-4 h-4" /> SAO History</button>
-        {canRead && <button onClick={() => {setActiveTab('inventory'); setInvPage(1);}} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'inventory' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Database className="w-4 h-4" /> Book Inventory</button>}
-        {canUpdate && <button onClick={() => setActiveTab('genres')} className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'genres' ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}><Tags className="w-4 h-4" /> Genres</button>}
+      <div className="hidden md:flex bg-white dark:bg-tabler-card border rounded-lg shadow-sm overflow-x-auto scrollbar-hide border-gray-200 dark:border-tabler-border">
+        {saoTabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={tab.onClick}
+              className={`whitespace-nowrap flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${isActive ? 'border-tabler-primary text-tabler-primary bg-gray-50 dark:bg-tabler-body/50' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+            >
+              <Icon className="w-4 h-4" /> {tab.label}
+              {tab.badge !== undefined && (
+                <span className="bg-tabler-warning/10 text-tabler-warning px-1.5 rounded-full text-[10px] ml-1">{tab.badge}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {['approvals', 'returns', 'history'].includes(activeTab) && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg p-4 shadow-sm">
           <div className="relative w-full sm:max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-            <input type="text" placeholder="Search by Student Name, ID, or Book..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+            <input type="text" placeholder="Search by Student Name, ID, or Asset..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
           </div>
         </div>
       )}
 
-      {/* UPGRADE: SAO Detailed Synced Operations Charts */}
-      {activeTab === 'console' && (
-        <div className="bg-white border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col min-h-[400px] dark:bg-tabler-card relative">
-          <div className="flex justify-between items-center mb-6 relative z-30">
-            <h3 className="font-semibold text-sm">Synced Operations Hub</h3>
-            <div className="text-xs text-gray-500 dark:text-tabler-muted font-medium bg-gray-50 dark:bg-tabler-body/50 px-3 py-1 rounded">
-              Hover to synchronize views
-            </div>
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { id: 'sao-stat-1', label: 'Pending Approvals', val: saoStats.pendingCount, color: 'text-tabler-warning', icon: ClipboardCheck, fill: 'bg-tabler-warning' },
+              { id: 'sao-stat-2', label: 'Active Borrowed', val: saoStats.activeCount, color: 'text-tabler-primary', icon: ArrowUpRight, fill: 'bg-tabler-primary' },
+              { id: 'sao-stat-3', label: "Today's Requests", val: saoStats.todayRequests, color: 'text-tabler-success', icon: Plus, fill: 'bg-[#2fb344]' },
+              { id: 'sao-stat-4', label: 'Needs Attention', val: saoStats.attentionItems, color: 'text-tabler-danger', icon: AlertCircle, fill: 'bg-[#d63939]' }
+            ].map((stat) => (
+              <div key={stat.id} className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-md text-white shadow-sm ${stat.fill}`}><stat.icon className="w-5 h-5" /></div>
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-500 dark:text-tabler-muted uppercase tracking-wider mb-0.5">{stat.label}</div>
+                      <div className="text-2xl font-bold leading-none text-gray-900 dark:text-white">{stat.val}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="relative w-full flex flex-col gap-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
             
-            {/* GLOBAL HOVER OVERLAY */}
-            <div className="absolute top-0 left-0 right-0 bottom-8 z-40 flex">
-              {last30Days.map((day, i) => (
-                <div 
-                  key={`hover-${i}`} 
-                  className="flex-1 h-full relative cursor-crosshair group"
-                  onMouseEnter={() => setSyncedHover({ ...day, index: i })}
-                  onMouseLeave={() => setSyncedHover(null)}
-                >
-                  <div className={`hidden group-hover:block absolute top-0 bottom-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600 border-dashed border-l pointer-events-none`}></div>
+            <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col">
+              <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex justify-between items-center bg-gray-50 dark:bg-tabler-body/30">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-tabler-primary" />
+                  <h3 className="font-semibold text-sm">Live Desk Queue</h3>
                 </div>
-              ))}
+                <button onClick={() => setActiveTab('approvals')} className="text-xs text-tabler-primary font-medium hover:underline">View All</button>
+              </div>
+              <div className="flex-1 overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <tbody className="divide-y dark:divide-tabler-border">
+                    {liveQueue.map(tx => {
+                      const item = inventory.find(i => i.id === tx.item_id);
+                      const student = usersList.find(u => u.id === tx.student_id);
+                      return (
+                        <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30">
+                          <td className="px-5 py-3">
+                             <div className="text-gray-900 dark:text-gray-100 text-sm font-medium">{student?.name || 'Unknown User'}</div>
+                             <div className="text-gray-500 dark:text-gray-400 text-[10px] font-mono mt-0.5">{tx.student_id}</div>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600 dark:text-gray-300">
+                             <div className="flex items-center gap-2">
+                               <span className={`w-2 h-2 rounded-full ${tx.status === 'Pending' ? 'bg-tabler-warning' : 'bg-tabler-primary'}`}></span>
+                               <span className="font-medium">{item?.name || 'Unknown Asset'}</span>
+                             </div>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {tx.status === 'Pending' ? (
+                              <button onClick={() => openApproveModal(tx)} className="px-3 py-1.5 bg-tabler-success text-white rounded text-xs shadow-sm hover:bg-green-600 transition-colors">Approve</button>
+                            ) : (
+                              <button onClick={() => openReturnModal(tx)} className="px-3 py-1.5 bg-gray-100 text-gray-700 dark:bg-tabler-border dark:text-gray-200 border dark:border-gray-700 rounded text-xs shadow-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Process Return</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {liveQueue.length === 0 && <tr><td colSpan="3" className="px-5 py-8 text-center text-gray-500">No active items in the queue.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* CHART 1: Requests & Borrowed (Dual Spline) */}
-            <div className="relative h-40 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
-              <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
-                <defs>
-                  <linearGradient id="gradReqSao" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#206bc4" stopOpacity="0.2"/><stop offset="100%" stopColor="#206bc4" stopOpacity="0"/></linearGradient>
-                </defs>
-                <path d={`${requestsPath} L1000,100 L0,100 Z`} fill="url(#gradReqSao)" className="transition-all duration-300" />
-                
-                {/* Total Requests Line */}
-                <path d={requestsPath} fill="none" stroke="#206bc4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Approved Borrowed Line */}
-                <path d={borrowedPath} fill="none" stroke="#2fb344" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6,4" />
-                
-                {syncedHover && (
-                  <>
-                    <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.requests / Math.max(maxRequests, 1)) * 85} r="4" fill="#206bc4" stroke="#fff" strokeWidth="2" />
-                    <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.borrowed / Math.max(maxRequests, 1)) * 85} r="4" fill="#2fb344" stroke="#fff" strokeWidth="2" />
-                  </>
-                )}
-              </svg>
+            <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-semibold text-sm">7-Day Desk Volume</h3>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-medium text-gray-600 dark:text-tabler-muted mb-4 justify-center">
+                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-tabler-primary"></div> Requests</span>
+                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-tabler-success"></div> Returns</span>
+              </div>
               
-              {syncedHover && (
-                <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[130px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
-                  <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center text-gray-400 uppercase tracking-wider">{syncedHover.displayDate}</span>
-                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#206bc4]"></div> Total Requests</div> <span>{syncedHover.requests}</span></span>
-                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2fb344]"></div> Active Borrowed</div> <span>{syncedHover.borrowed}</span></span>
-                </div>
-              )}
-            </div>
+              <div className="relative h-48 w-full flex items-end justify-between pt-2 border-b border-gray-200 dark:border-tabler-border pb-2 mt-auto">
+                {[25, 50, 75, 100].map(pct => (
+                  <div key={pct} className="absolute w-full flex items-center z-0 pointer-events-none" style={{ bottom: `${pct}%` }}>
+                    <div className="flex-1 border-b border-gray-100 dark:border-gray-800 border-dashed"></div>
+                  </div>
+                ))}
 
-            {/* CHART 2: Resolved / Returned (Bar) */}
-            <div className="relative h-28 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2">
-              <div className="absolute inset-0 flex items-end justify-between px-1">
-                {last30Days.map((day, i) => (
-                  <div key={`bar-${i}`} className="w-full flex justify-center h-full items-end">
-                     <div 
-                       className={`w-3/4 max-w-[14px] rounded-t-sm transition-all duration-300 ${syncedHover?.index === i ? 'bg-[#3da9fc]' : 'bg-[#3da9fc]/70 dark:bg-[#3da9fc]/40'}`}
-                       style={{ height: `${(day.returned / Math.max(maxReturned, 1)) * 90}%` }}
-                     ></div>
+                {last7Days.map((day, i) => (
+                  <div key={i} className="flex flex-col items-center gap-2 group z-10 w-full relative">
+                    <div className="absolute bottom-full mb-2 bg-[#182433] text-white px-3 py-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none flex flex-col gap-1.5 min-w-[120px]">
+                      <span className="font-bold border-b border-gray-700 pb-1 w-full text-center text-[10px] uppercase tracking-wider text-gray-400">{day.dayName}</span>
+                      <span className="flex items-center justify-between text-xs font-medium"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-tabler-primary"></div> Requests</div> <span>{day.borrowed}</span></span>
+                      <span className="flex items-center justify-between text-xs font-medium"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-tabler-success"></div> Returns</div> <span>{day.returned}</span></span>
+                    </div>
+
+                    <div className="flex gap-1 h-40 items-end w-full justify-center relative cursor-crosshair">
+                       <div className="w-2 sm:w-3 bg-tabler-primary rounded-t-sm transition-all duration-500 hover:opacity-80" style={{height: `${(day.borrowed / Math.max(maxDeskTraffic, 1)) * 100}%`}}></div>
+                       <div className="w-2 sm:w-3 bg-tabler-success rounded-t-sm transition-all duration-500 hover:opacity-80" style={{height: `${(day.returned / Math.max(maxDeskTraffic, 1)) * 100}%`}}></div>
+                    </div>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{day.dayName}</span>
                   </div>
                 ))}
               </div>
-
-              {syncedHover && (
-                <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[130px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
-                  <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center text-gray-400 uppercase tracking-wider">{syncedHover.displayDate}</span>
-                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3da9fc]"></div> Resolved / Ret</div> <span>{syncedHover.returned}</span></span>
-                </div>
-              )}
             </div>
+          </div>
 
-            {/* X-Axis Date Row */}
-            <div className="w-full flex pt-3 pb-1 relative">
-              {last30Days.map((day, i) => (
-                <div key={`label-${i}`} className="flex-1 relative">
-                  {i % 4 === 0 && (
-                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 text-[10px] text-gray-400 font-medium whitespace-nowrap">
-                      {day.displayDate}
+          <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 mt-6">
+            <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col relative">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="font-semibold text-sm">Asset Distribution (Physical Inventory)</h3>
+                <span className="text-[10px] font-bold tracking-widest uppercase bg-gray-100 dark:bg-tabler-body/50 px-2 py-1 rounded text-gray-500">{invStats.total} Assets Total</span>
+              </div>
+
+              <div className="w-full h-3.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex mb-8 shadow-inner">
+                <div style={{width: `${invStats.avail.pct}%`}} className="h-full bg-[#2fb344] transition-all duration-1000"></div>
+                <div style={{width: `${invStats.borrowed.pct}%`}} className="h-full bg-[#206bc4] transition-all duration-1000 border-l border-white/20"></div>
+                <div style={{width: `${invStats.pending.pct}%`}} className="h-full bg-[#f59f00] transition-all duration-1000 border-l border-white/20"></div>
+                <div style={{width: `${invStats.issues.pct}%`}} className="h-full bg-[#d63939] transition-all duration-1000 border-l border-white/20"></div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:flex sm:flex-nowrap gap-3 sm:gap-4 justify-between flex-1 mt-2">
+                {[
+                  { label: 'Available (On Shelf)', stat: invStats.avail },
+                  { label: 'Borrowed (In Field)', stat: invStats.borrowed },
+                  { label: 'Pending (Reserved)', stat: invStats.pending },
+                  { label: 'Attention (Damaged)', stat: invStats.issues }
+                ].map(item => (
+                  <div key={item.label} className="flex flex-col gap-2 p-3 bg-gray-50 dark:bg-tabler-body/50 rounded-lg flex-1 border border-transparent hover:border-gray-200 dark:hover:border-tabler-border transition-colors">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${item.stat.color} shadow-sm`}></div>
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate">{item.label}</span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl font-bold text-gray-900 dark:text-white">{item.stat.count}</span>
+                      <span className="text-gray-400 dark:text-gray-500 text-[11px] font-mono font-bold mt-1">{Math.round(item.stat.pct)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-
           </div>
         </div>
       )}
@@ -321,7 +424,7 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Asset Name</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedPending.map(tx => {
@@ -355,7 +458,7 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Asset Name</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedActive.map(tx => {
@@ -373,7 +476,7 @@ export default function SaoDashboard() {
                     </tr>
                   );
                 })}
-                {paginatedActive.length === 0 && <tr><td colSpan="3" className="px-5 py-8 text-center text-gray-500">No active books in the field match search.</td></tr>}
+                {paginatedActive.length === 0 && <tr><td colSpan="3" className="px-5 py-8 text-center text-gray-500">No active assets in the field match search.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -386,7 +489,7 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Details</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Date</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Asset Name</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Details</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Date</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedHistory.map(tx => {
@@ -427,14 +530,14 @@ export default function SaoDashboard() {
             </div>
             {canCreate && (
               <button onClick={() => { setEditingItem(null); setItemForm({name:'', inventory_code:'', category:(genres[0]?.name || 'Uncategorized'), status:'Available', image: '', description: ''}); setIsItemModalOpen(true); }} className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center justify-center gap-1.5 shadow-sm">
-                <Plus className="w-4 h-4" /> Add Book
+                <Plus className="w-4 h-4" /> Add Asset
               </button>
             )}
           </div>
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-gray-50 dark:bg-tabler-body/50 border-b border-gray-200 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Category</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th><th className="px-5 py-3 text-right"></th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Asset Name</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Category</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th><th className="px-5 py-3 text-right"></th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
                 {paginatedInventory.map((item, index) => (
@@ -446,13 +549,13 @@ export default function SaoDashboard() {
                       {(canUpdate || canDelete) && (
                         <div className="inline-flex items-center border rounded overflow-hidden dark:border-tabler-border">
                           {canUpdate && <button onClick={() => { setEditingItem(item); setItemForm(item); setIsItemModalOpen(true); }} className="px-3 py-1.5 border-r hover:text-tabler-primary dark:border-tabler-border"><Edit className="w-3.5 h-3.5"/></button>}
-                          {canDelete && <button onClick={() => requestConfirm('Delete Book', `Permanently delete "${item.name}" from the system?`, () => deleteInventoryItem(item.id))} className="px-3 py-1.5 hover:text-tabler-danger"><Trash2 className="w-3.5 h-3.5"/></button>}
+                          {canDelete && <button onClick={() => requestConfirm('Delete Asset', `Permanently delete "${item.name}" from the system?`, () => deleteInventoryItem(item.id))} className="px-3 py-1.5 hover:text-tabler-danger"><Trash2 className="w-3.5 h-3.5"/></button>}
                         </div>
                       )}
                     </td>
                   </tr>
                 ))}
-                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No books match search.</td></tr>}
+                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No assets match search.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -464,22 +567,22 @@ export default function SaoDashboard() {
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden animate-in fade-in duration-300 max-w-2xl">
           <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div>
-               <h3 className="font-semibold text-sm">Book Categories (Genres)</h3>
-               <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Add or remove genres used in the inventory and discover tabs.</p>
+               <h3 className="font-semibold text-sm">Asset Categories</h3>
+               <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Add or remove categories used in the inventory and discover tabs.</p>
             </div>
             <form onSubmit={handleGenreSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <input type="text" placeholder="New Genre Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="w-full sm:flex-1 px-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
-              <button type="submit" className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Genre</button>
+              <input type="text" placeholder="New Category Name..." required value={newGenre} onChange={(e) => setNewGenre(e.target.value)} className="w-full sm:flex-1 px-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
+              <button type="submit" className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] shadow-sm whitespace-nowrap">Add Category</button>
             </form>
           </div>
           <ul className="divide-y divide-gray-100 dark:divide-tabler-border max-h-[500px] overflow-y-auto">
             {genres.map(g => (
               <li key={g.id} className="px-5 py-3 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
                 <span className="text-sm font-medium">{g.name}</span>
-                <button onClick={() => requestConfirm('Delete Genre', `Are you sure you want to remove "${g.name}" from the system?`, () => deleteGenre(g.id))} className="p-1.5 text-gray-400 hover:text-tabler-danger hover:bg-red-50 dark:hover:bg-tabler-danger/10 rounded"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => requestConfirm('Delete Category', `Are you sure you want to remove "${g.name}" from the system?`, () => deleteGenre(g.id))} className="p-1.5 text-gray-400 hover:text-tabler-danger hover:bg-red-50 dark:hover:bg-tabler-danger/10 rounded"><Trash2 className="w-4 h-4" /></button>
               </li>
             ))}
-            {genres.length === 0 && <li className="px-5 py-6 text-center text-sm text-gray-500">No genres found. Add one above.</li>}
+            {genres.length === 0 && <li className="px-5 py-6 text-center text-sm text-gray-500">No categories found. Add one above.</li>}
           </ul>
         </div>
       )}
@@ -496,7 +599,6 @@ export default function SaoDashboard() {
         </div>
       )}
 
-      {/* UPGRADE: Detailed Process Return Modal */}
       {returnModalOpen && returnTx && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-sm w-full overflow-hidden">
@@ -533,18 +635,17 @@ export default function SaoDashboard() {
         </div>
       )}
 
-      {/* Book Form Modal */}
       {isItemModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-200 dark:border-tabler-border flex justify-between items-center bg-gray-50 dark:bg-tabler-body/50">
-              <h3 className="font-semibold text-sm">{editingItem ? 'Edit Book Data' : 'Provision New Book'}</h3>
+              <h3 className="font-semibold text-sm">{editingItem ? 'Edit Asset Data' : 'Provision New Asset'}</h3>
               <button onClick={() => setIsItemModalOpen(false)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleItemSubmit}>
               <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Book Name</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Asset Name</label>
                   <input required type="text" value={itemForm.name} onChange={(e) => setItemForm({...itemForm, name: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" />
                 </div>
                 <div>
@@ -552,10 +653,10 @@ export default function SaoDashboard() {
                   <input required type="text" value={itemForm.inventory_code} onChange={(e) => setItemForm({...itemForm, inventory_code: e.target.value})} className="w-full px-3 py-2 border rounded text-sm uppercase outline-none font-mono dark:bg-tabler-body dark:border-tabler-border" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Category (Genre)</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Category</label>
                   <select value={itemForm.category} onChange={(e) => setItemForm({...itemForm, category: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border">
                     {genres.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
-                    {genres.length === 0 && <option value="Uncategorized">Uncategorized (Add via Genres Tab)</option>}
+                    {genres.length === 0 && <option value="Uncategorized">Uncategorized (Add via Categories Tab)</option>}
                   </select>
                 </div>
                 <div>
@@ -577,7 +678,7 @@ export default function SaoDashboard() {
               </div>
               <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
                 <button type="button" onClick={() => setIsItemModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
-                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Book</button>
+                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Asset</button>
               </div>
             </form>
           </div>
