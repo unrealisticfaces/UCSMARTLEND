@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags, TrendingUp } from 'lucide-react';
+import { Plus, Package, ShieldCheck, RefreshCcw, Users, Edit, Trash2, Database, Search, X, LayoutDashboard, ShieldAlert, Tags, TrendingUp, UserPlus } from 'lucide-react';
 
 const Pagination = ({ page, setPage, total, perPage = 8 }) => {
   const totalPages = Math.ceil(total / perPage);
@@ -17,7 +17,7 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
 };
 
 export default function AdminDashboard() {
-  const { user, inventory = [], usersList = [], transactions = [], genres = [], addInventoryItem, updateInventoryItem, deleteInventoryItem, updateUserRole, updateUserPermissions, addGenre, deleteGenre, requestConfirm } = useApp();
+  const { user, inventory = [], usersList = [], transactions = [], genres = [], addInventoryItem, updateInventoryItem, deleteInventoryItem, updateUserRole, updateUserPermissions, addGenre, deleteGenre, requestConfirm, adminCreateUser, showToast } = useApp();
   
   const [activeTab, setActiveTab] = useState('overview'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,11 +28,13 @@ export default function AdminDashboard() {
   const [itemForm, setItemForm] = useState({ name: '', inventory_code: '', category: 'Computer Science', status: 'Available', image: '', description: '' });
   const [newGenre, setNewGenre] = useState('');
 
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [userForm, setUserForm] = useState({ name: '', idNumber: '', email: '', password: '', role: 'student' });
+
   const [invPage, setInvPage] = useState(1);
   const [userPage, setUserPage] = useState(1);
   const [txPage, setTxPage] = useState(1);
 
-  // Synced Chart Hover State
   const [syncedHover, setSyncedHover] = useState(null);
   const [activityHover, setActivityHover] = useState(null);
 
@@ -46,7 +48,7 @@ export default function AdminDashboard() {
     users: validUsers.length
   };
 
-  // 30-Day Dynamic Data Generator (with simulated Logins)
+  // UPGRADE: 100% Precise Data (No simulated variance)
   const last30Days = useMemo(() => {
     const days = [];
     const today = new Date();
@@ -59,29 +61,22 @@ export default function AdminDashboard() {
       const displayDate = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]}`;
       
       const dayTxs = transactions.filter(tx => tx.request_date === dateStr);
-      const borrowedCount = dayTxs.filter(tx => tx.status === 'Pending' || tx.status === 'Borrowed').length;
-      const returnedCount = dayTxs.filter(tx => tx.status === 'Returned' || tx.status === 'Declined' || tx.status === 'Cancelled').length;
       
-      // Simulate realistic login traffic based on transaction volume + organic variance
-      const simulatedLogins = (dayTxs.length * 15) + 120 + Math.floor(Math.sin(i) * 40);
-
-      days.push({
-        dateStr,
-        displayDate,
-        borrowed: borrowedCount,
-        returned: returnedCount,
-        logins: simulatedLogins,
+      days.push({ 
+        dateStr, 
+        displayDate, 
+        requests: dayTxs.length, // Exact total requests
+        borrowed: dayTxs.filter(tx => tx.status === 'Borrowed').length, // Exact active borrowed
+        returned: dayTxs.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).length, // Exact resolved
         total: dayTxs.length
       });
     }
     return days;
   }, [transactions]);
 
-  // Monotone Cubic Bezier Builder for Zero-Overshoot Smooth Curves
   const buildSmoothPath = (dataArray, maxVal, invertY = false) => {
     if(dataArray.length === 0) return '';
     const safeMax = Math.max(maxVal, 1);
-    
     const points = dataArray.map((val, i) => ({
       x: (i / (dataArray.length - 1)) * 1000,
       y: invertY ? (val / safeMax) * 85 + 10 : 95 - (val / safeMax) * 85 
@@ -98,17 +93,15 @@ export default function AdminDashboard() {
     return d;
   };
 
-  // Synced Charts Scaling Math
-  const maxLogins = Math.max(...last30Days.map(d => d.logins), 100);
+  const maxRequests = Math.max(...last30Days.map(d => d.requests), 5);
   const maxBorrowed = Math.max(...last30Days.map(d => d.borrowed), 5);
   const maxReturned = Math.max(...last30Days.map(d => d.returned), 5);
   const maxActivity = Math.max(...last30Days.map(d => d.total), 5);
 
-  const loginsPath = buildSmoothPath(last30Days.map(d => d.logins), maxLogins);
+  const requestsPath = buildSmoothPath(last30Days.map(d => d.requests), maxRequests);
   const borrowedPath = buildSmoothPath(last30Days.map(d => d.borrowed), maxBorrowed);
   const activityPath = buildSmoothPath(last30Days.map(d => d.total), maxActivity);
 
-  // Department Demographics
   const deptStats = useMemo(() => {
     const counts = transactions.reduce((acc, tx) => {
       const dept = tx.department || 'Unknown';
@@ -122,7 +115,6 @@ export default function AdminDashboard() {
     })).sort((a,b) => b.count - a.count);
   }, [transactions]);
 
-  // Real-Time Asset Distribution Matrix Calculations
   const invStats = useMemo(() => {
     const total = validInventory.length || 1;
     const avail = validInventory.filter(i => i.status === 'Available').length;
@@ -160,8 +152,10 @@ export default function AdminDashboard() {
     const q = txSearchQuery.toLowerCase();
     if (!q) return true;
     const item = validInventory.find(i => i.id === tx.item_id);
+    const student = validUsers.find(u => u.id === tx.student_id);
     const itemName = item?.name?.toLowerCase() || '';
-    return tx.transaction_id.toLowerCase().includes(q) || tx.student_id.toLowerCase().includes(q) || itemName.includes(q);
+    const studentName = student?.name?.toLowerCase() || '';
+    return tx.transaction_id.toLowerCase().includes(q) || tx.student_id.toLowerCase().includes(q) || itemName.includes(q) || studentName.includes(q);
   }).sort((a,b) => new Date(b.request_date) - new Date(a.request_date));
 
   const paginatedInventory = filteredInventory.slice((invPage - 1) * 8, invPage * 8);
@@ -173,6 +167,16 @@ export default function AdminDashboard() {
     if (editingItem && editingItem.id) await updateInventoryItem({ ...editingItem, ...itemForm });
     else await addInventoryItem({ id: `item_${Date.now()}`, rating: 5.0, reviews: 0, ...itemForm });
     setIsItemModalOpen(false);
+  };
+
+  const handleUserSubmit = async (e) => {
+    e.preventDefault();
+    if (userForm.password.length < 6) return showToast('Password must be at least 6 characters.', 'error');
+    try {
+      await adminCreateUser(userForm.name, userForm.idNumber, userForm.email, userForm.password, userForm.role);
+      setIsUserModalOpen(false);
+      setUserForm({ name: '', idNumber: '', email: '', password: '', role: 'student' });
+    } catch (error) { showToast(error.message, 'error'); }
   };
 
   const handleGenreSubmit = (e) => {
@@ -232,7 +236,6 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
             
-            {/* MASTER SYNCED CHARTS COMPONENT */}
             <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 relative">
               <div className="flex justify-between items-center mb-6 relative z-30">
                 <h3 className="font-semibold text-sm">Synced Operations Charts</h3>
@@ -243,7 +246,6 @@ export default function AdminDashboard() {
 
               <div className="relative w-full flex flex-col">
                 
-                {/* GLOBAL HOVER OVERLAY (Covers the 3 charts, stops exactly before X-axis) */}
                 <div className="absolute top-0 left-0 right-0 bottom-8 z-40 flex">
                   {last30Days.map((day, i) => (
                     <div 
@@ -257,24 +259,20 @@ export default function AdminDashboard() {
                   ))}
                 </div>
 
-                {/* CHART 1: Logins (Blue Area Spline) */}
+                {/* CHART 1: Requests (Blue Area Spline) */}
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
                   <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
                     <defs>
-                      <linearGradient id="gradLogin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#206bc4" stopOpacity="0.2"/><stop offset="100%" stopColor="#206bc4" stopOpacity="0"/></linearGradient>
+                      <linearGradient id="gradReq" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#206bc4" stopOpacity="0.2"/><stop offset="100%" stopColor="#206bc4" stopOpacity="0"/></linearGradient>
                     </defs>
-                    <path d={`${loginsPath} L1000,100 L0,100 Z`} fill="url(#gradLogin)" className="transition-all duration-300" />
-                    <path d={loginsPath} fill="none" stroke="#206bc4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                    
-                    {syncedHover && (
-                      <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.logins / Math.max(maxLogins, 1)) * 85} r="4" fill="#206bc4" stroke="#fff" strokeWidth="2" />
-                    )}
+                    <path d={`${requestsPath} L1000,100 L0,100 Z`} fill="url(#gradReq)" className="transition-all duration-300" />
+                    <path d={requestsPath} fill="none" stroke="#206bc4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {syncedHover && <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.requests / Math.max(maxRequests, 1)) * 85} r="4" fill="#206bc4" stroke="#fff" strokeWidth="2" />}
                   </svg>
-                  
                   {syncedHover && (
                     <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
                       <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
-                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#206bc4]"></div> Login Visits</div> <span>{syncedHover.logins}</span></span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#206bc4]"></div> Total Requests</div> <span>{syncedHover.requests}</span></span>
                     </div>
                   )}
                 </div>
@@ -283,42 +281,33 @@ export default function AdminDashboard() {
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
                   <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
                     <path d={borrowedPath} fill="none" stroke="#2fb344" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                    
-                    {syncedHover && (
-                      <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.borrowed / Math.max(maxBorrowed, 1)) * 85} r="4" fill="#2fb344" stroke="#fff" strokeWidth="2" />
-                    )}
+                    {syncedHover && <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.borrowed / Math.max(maxBorrowed, 1)) * 85} r="4" fill="#2fb344" stroke="#fff" strokeWidth="2" />}
                   </svg>
-                  
                   {syncedHover && (
                     <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
                       <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
-                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2fb344]"></div> Borrowed</div> <span>{syncedHover.borrowed}</span></span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2fb344]"></div> Active Borrowed</div> <span>{syncedHover.borrowed}</span></span>
                     </div>
                   )}
                 </div>
 
-                {/* CHART 3: Returned (Blue Bar Chart) */}
+                {/* CHART 3: Resolved (Blue Bar Chart) */}
                 <div className="relative h-24 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2">
                   <div className="absolute inset-0 flex items-end justify-between px-1">
                     {last30Days.map((day, i) => (
                       <div key={`bar-${i}`} className="w-full flex justify-center h-full items-end">
-                         <div 
-                           className={`w-3/4 max-w-[14px] rounded-t-sm transition-all duration-300 ${syncedHover?.index === i ? 'bg-[#206bc4]' : 'bg-[#206bc4]/70 dark:bg-[#206bc4]/50'}`}
-                           style={{ height: `${(day.returned / Math.max(maxReturned, 1)) * 90}%` }}
-                         ></div>
+                         <div className={`w-3/4 max-w-[14px] rounded-t-sm transition-all duration-300 ${syncedHover?.index === i ? 'bg-[#206bc4]' : 'bg-[#206bc4]/70 dark:bg-[#206bc4]/50'}`} style={{ height: `${(day.returned / Math.max(maxReturned, 1)) * 90}%` }}></div>
                       </div>
                     ))}
                   </div>
-
                   {syncedHover && (
                     <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[120px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
                       <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center">{syncedHover.displayDate}</span>
-                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3da9fc]"></div> Returned</div> <span>{syncedHover.returned}</span></span>
+                      <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3da9fc]"></div> Resolved</div> <span>{syncedHover.returned}</span></span>
                     </div>
                   )}
                 </div>
 
-                {/* NEW: Explicit X-Axis Label Row */}
                 <div className="w-full flex pt-3 pb-1 relative">
                   {last30Days.map((day, i) => (
                     <div key={`label-${i}`} className="flex-1 relative">
@@ -334,14 +323,12 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Asset Distribution Matrix Component */}
             <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col relative">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="font-semibold text-sm">Asset Distribution</h3>
                 <span className="text-[10px] font-bold tracking-widest uppercase bg-gray-100 dark:bg-tabler-body/50 px-2 py-1 rounded text-gray-500">{invStats.total} Total</span>
               </div>
 
-              {/* Segmented Progress Track */}
               <div className="w-full h-3.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex mb-8 shadow-inner">
                 <div style={{width: `${invStats.avail.pct}%`}} className="h-full bg-[#2fb344] transition-all duration-1000"></div>
                 <div style={{width: `${invStats.borrowed.pct}%`}} className="h-full bg-[#206bc4] transition-all duration-1000 border-l border-white/20"></div>
@@ -349,7 +336,6 @@ export default function AdminDashboard() {
                 <div style={{width: `${invStats.issues.pct}%`}} className="h-full bg-[#d63939] transition-all duration-1000 border-l border-white/20"></div>
               </div>
 
-              {/* Distribution Legend List */}
               <div className="space-y-5 flex-1 mt-2">
                 {[
                   { label: 'Available (On Shelf)', stat: invStats.avail },
@@ -394,7 +380,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* System Activity Graph to Match New Visual Language */}
             <div className="lg:col-span-2 bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm overflow-hidden flex flex-col">
               <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-tabler-card relative z-30">
                 <div>
@@ -451,11 +436,15 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-gray-100 dark:divide-tabler-border">
                     {paginatedTxs.map(tx => {
                       const item = inventory.find(i => i?.id === tx.item_id);
+                      const studentInfo = validUsers.find(u => u.id === tx.student_id);
                       return (
                         <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30 transition-colors">
                           <td className="px-5 py-3 flex items-center gap-3">
                             <div className="w-7 h-7 rounded-full bg-tabler-primary/10 text-tabler-primary flex items-center justify-center text-[10px] font-bold">{tx.student_id ? tx.student_id.substring(0,2).toUpperCase() : 'U'}</div>
-                            <span className="font-mono font-medium">{tx.student_id}</span>
+                            <div>
+                              <div className="font-mono font-medium">{tx.student_id}</div>
+                              <div className="text-[10px] text-gray-500">{studentInfo?.name || 'Unknown'}</div>
+                            </div>
                           </td>
                           <td className="px-5 py-3 text-gray-600 dark:text-tabler-muted">
                             <span className="font-mono text-[10px] mr-2 text-gray-400">{tx.transaction_id}</span>
@@ -522,12 +511,11 @@ export default function AdminDashboard() {
       {activeTab === 'users' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col overflow-hidden animate-in fade-in duration-300">
           <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="relative w-full sm:w-auto">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-                <input type="text" placeholder="Search users by name or email..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setUserPage(1); }} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
-              </div>
+            <div className="relative w-full sm:w-auto">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
+              <input type="text" placeholder="Search users by name or email..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setUserPage(1); }} className="w-full sm:w-72 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary" />
             </div>
+            <button onClick={() => { setUserForm({name:'', idNumber:'', email:'', password:'', role:'student'}); setIsUserModalOpen(true); }} className="w-full sm:w-auto px-4 py-2 sm:py-1.5 bg-tabler-primary text-white rounded text-sm font-medium hover:bg-[#1d5fb3] flex items-center justify-center gap-1.5"><UserPlus className="w-4 h-4" /> Add User</button>
           </div>
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -616,7 +604,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Book Form Modal */}
+      {/* Item Modal */}
       {isItemModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
@@ -661,6 +649,50 @@ export default function AdminDashboard() {
               <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
                 <button type="button" onClick={() => setIsItemModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
                 <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Save Book</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Admin User Creation Modal */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-tabler-border flex justify-between items-center bg-gray-50 dark:bg-tabler-body/50">
+              <h3 className="font-semibold text-sm">Provision New User</h3>
+              <button onClick={() => setIsUserModalOpen(false)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleUserSubmit}>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Full Name</label>
+                  <input required type="text" value={userForm.name} onChange={(e) => setUserForm({...userForm, name: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">ID Number</label>
+                  <input required type="text" placeholder="e.g. BSIT-123" value={userForm.idNumber} onChange={(e) => setUserForm({...userForm, idNumber: e.target.value})} className="w-full px-3 py-2 border rounded text-sm uppercase outline-none font-mono dark:bg-tabler-body dark:border-tabler-border" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Email Address</label>
+                  <input required type="email" value={userForm.email} onChange={(e) => setUserForm({...userForm, email: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Temporary Password</label>
+                  <input required type="text" minLength="6" value={userForm.password} onChange={(e) => setUserForm({...userForm, password: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border" placeholder="Minimum 6 characters" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">Account Role</label>
+                  <select value={userForm.role} onChange={(e) => setUserForm({...userForm, role: e.target.value})} className="w-full px-3 py-2 border rounded text-sm outline-none dark:bg-tabler-body dark:border-tabler-border">
+                    <option value="student">Student User</option>
+                    <option value="sao">SAO Staff</option>
+                    <option value="admin">System Admin</option>
+                  </select>
+                </div>
+              </div>
+              <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3 dark:bg-tabler-body/50 dark:border-tabler-border">
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="w-full sm:w-auto px-4 py-2 text-sm font-medium border rounded hover:bg-gray-100 dark:hover:bg-tabler-border">Cancel</button>
+                <button type="submit" className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-tabler-primary rounded hover:bg-[#1d5fb3]">Create User</button>
               </div>
             </form>
           </div>

@@ -27,7 +27,6 @@ export function AppProvider({ children }) {
   
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
   
-  // FIXED: Separated initial auth loading from button loading
   const [isLoading, setIsLoading] = useState(false); 
   const [isAuthReady, setIsAuthReady] = useState(false); 
   
@@ -88,7 +87,7 @@ export function AppProvider({ children }) {
         setNotifications([]);
         setGenres([]);
       }
-      setIsAuthReady(true); // Tells the app it is safe to render the page
+      setIsAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
@@ -159,6 +158,46 @@ export function AppProvider({ children }) {
     }
   };
 
+  // UPGRADE: Secure Admin User Creation using Firebase REST API (Prevents forced sign-out)
+  const adminCreateUser = async (name, idNumber, email, password, requestedRole) => {
+    setIsLoading(true);
+    try {
+      const apiKey = auth.app.options.apiKey;
+      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: false })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        if (data.error.message === 'EMAIL_EXISTS') throw new Error('This email is already in use by another account.');
+        throw new Error(data.error.message);
+      }
+      
+      const newUid = data.localId;
+      const assignedDepartment = requestedRole === 'sao' ? 'Student Affairs' : (requestedRole === 'admin' ? 'System Administrator' : 'BSIT');
+      const defaultPerms = requestedRole === 'admin' ? { create: true, read: true, update: true, delete: true } : 
+                           requestedRole === 'sao' ? { create: false, read: true, update: true, delete: false } :
+                           { create: false, read: true, update: false, delete: false };
+
+      const newUser = {
+        id: idNumber, name, email, role: requestedRole, department: assignedDepartment,
+        permissions: defaultPerms,
+        avatar: `https://ui-avatars.com/api/?name=${name.replace(/ /g, '+')}&background=random&color=fff`
+      };
+      
+      await set(ref(db, `users/${newUid}`), newUser);
+      showToast('User account successfully provisioned.');
+      setIsLoading(false);
+      return newUser;
+    } catch (err) {
+      setIsLoading(false);
+      throw err;
+    }
+  };
+
   const logout = async () => { setIsLoading(true); await signOut(auth); setIsLoading(false); };
   const resetPassword = async (email) => await sendPasswordResetEmail(auth, email);
   
@@ -199,7 +238,7 @@ export function AppProvider({ children }) {
       genres, addGenre, deleteGenre,
       transactions, addTransaction, updateTransaction, 
       usersList, updateUserRole, updateUserPermissions, notifications, markNotificationsRead,
-      user, login, registerUser, logout, resetPassword, changePassword, updateProfile, hasAdmin,
+      user, login, registerUser, adminCreateUser, logout, resetPassword, changePassword, updateProfile, hasAdmin,
       isDarkMode, setIsDarkMode, toast, showToast, clearToast, isLoading, isAuthReady,
       requestConfirm, confirmConfig, cancelConfirm, executeConfirm 
     }}>

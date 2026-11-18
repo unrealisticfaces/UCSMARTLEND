@@ -17,14 +17,16 @@ const Pagination = ({ page, setPage, total, perPage = 8 }) => {
 };
 
 export default function SaoDashboard() {
-  const { transactions, updateTransaction, inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem, genres, addGenre, deleteGenre, showToast, user, requestConfirm } = useApp();
+  const { transactions, updateTransaction, inventory, usersList, addInventoryItem, updateInventoryItem, deleteInventoryItem, genres, addGenre, deleteGenre, showToast, user, requestConfirm } = useApp();
   const [activeTab, setActiveTab] = useState('console'); 
   
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [approveTx, setApproveTx] = useState(null);
 
+  // UPGRADE: Two explicit states for processing returns
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnTx, setReturnTx] = useState(null);
+  const [returnAction, setReturnAction] = useState('Returned');
   const [returnCondition, setReturnCondition] = useState('Available');
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,18 +41,27 @@ export default function SaoDashboard() {
   const [retPage, setRetPage] = useState(1);
   const [histPage, setHistPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
+  
+  // Hover State for new Synced Charts
+  const [syncedHover, setSyncedHover] = useState(null);
 
   const canRead = user?.permissions?.read;
   const canCreate = user?.permissions?.create;
   const canUpdate = user?.permissions?.update;
   const canDelete = user?.permissions?.delete;
 
+  // Global Search logic (Matches Txn ID, Student ID, Item Name, or Student Name)
   const filterTx = (tx) => {
     if (!txSearchQuery) return true;
     const q = txSearchQuery.toLowerCase();
     const item = inventory.find(i => i.id === tx.item_id);
+    const student = usersList.find(u => u.id === tx.student_id);
     const itemName = item?.name?.toLowerCase() || '';
-    return tx.transaction_id.toLowerCase().includes(q) || tx.student_id.toLowerCase().includes(q) || itemName.includes(q);
+    const studentName = student?.name?.toLowerCase() || '';
+    return tx.transaction_id.toLowerCase().includes(q) || 
+           tx.student_id.toLowerCase().includes(q) || 
+           itemName.includes(q) || 
+           studentName.includes(q);
   };
 
   const pendingRequests = transactions.filter(tx => tx.status === 'Pending').filter(filterTx);
@@ -71,6 +82,58 @@ export default function SaoDashboard() {
   const paginatedActive = activeBorrowings.slice((retPage - 1) * 8, retPage * 8);
   const paginatedHistory = transactionHistory.slice((histPage - 1) * 8, histPage * 8);
   const paginatedInventory = filteredInventory.slice((invPage - 1) * 8, invPage * 8);
+
+  // UPGRADE: Precise 30-Day Data Generator for SAO Synced Charts
+  const last30Days = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const displayDate = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]}`;
+      
+      const dayTxs = transactions.filter(tx => tx.request_date === dateStr);
+      
+      days.push({
+        dateStr,
+        displayDate,
+        requests: dayTxs.length,
+        borrowed: dayTxs.filter(tx => tx.status === 'Borrowed').length,
+        returned: dayTxs.filter(tx => ['Returned', 'Declined', 'Cancelled'].includes(tx.status)).length,
+      });
+    }
+    return days;
+  }, [transactions]);
+
+  // Monotone Cubic Bezier Builder
+  const buildSmoothPath = (dataArray, maxVal, invertY = false) => {
+    if(dataArray.length === 0) return '';
+    const safeMax = Math.max(maxVal, 1);
+    
+    const points = dataArray.map((val, i) => ({
+      x: (i / (dataArray.length - 1)) * 1000,
+      y: invertY ? (val / safeMax) * 85 + 10 : 95 - (val / safeMax) * 85 
+    }));
+
+    let d = `M ${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const cpX1 = p1.x + (p2.x - p1.x) * 0.4;
+      const cpX2 = p2.x - (p2.x - p1.x) * 0.4;
+      d += ` C ${cpX1},${p1.y} ${cpX2},${p2.y} ${p2.x},${p2.y}`;
+    }
+    return d;
+  };
+
+  const maxRequests = Math.max(...last30Days.map(d => d.requests), 5);
+  const maxReturned = Math.max(...last30Days.map(d => d.returned), 5);
+
+  const requestsPath = buildSmoothPath(last30Days.map(d => d.requests), maxRequests);
+  const borrowedPath = buildSmoothPath(last30Days.map(d => d.borrowed), maxRequests);
 
   const handleItemSubmit = async (e) => {
     e.preventDefault();
@@ -111,23 +174,26 @@ export default function SaoDashboard() {
     });
   };
 
-  const openReturnModal = (tx) => { setReturnTx(tx); setReturnCondition('Available'); setReturnModalOpen(true); };
+  const openReturnModal = (tx) => { 
+    setReturnTx(tx); 
+    setReturnAction('Returned'); // Default action
+    setReturnCondition('Available'); // Default physical condition
+    setReturnModalOpen(true); 
+  };
+  
+  // UPGRADE: Processes both the Transaction state AND the Item physical state
   const handleProcessReturn = async () => {
     try {
-      await updateTransaction(returnTx.transaction_id, { status: 'Returned', processed_by: user.uid });
+      await updateTransaction(returnTx.transaction_id, { status: returnAction, processed_by: user.uid });
       const itemToUpdate = inventory.find(i => i.id === returnTx.item_id);
       if (itemToUpdate) await updateInventoryItem({ ...itemToUpdate, status: returnCondition });
-      showToast(`Asset logged as ${returnCondition}.`); setReturnModalOpen(false);
-    } catch (error) { showToast('Sync failed.', 'error'); }
+      
+      showToast(`Transaction marked as ${returnAction}. Asset logged as ${returnCondition}.`); 
+      setReturnModalOpen(false);
+    } catch (error) { 
+      showToast('Sync failed.', 'error'); 
+    }
   };
-
-  const last30Days = useMemo(() => Array.from({length: 30}, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const dayTxs = transactions.filter(tx => tx.request_date === dateStr);
-    return { day: d.getDate(), processed: dayTxs.filter(tx => tx.processed_by !== null).length, pending: dayTxs.filter(tx => tx.status === 'Pending').length };
-  }).reverse(), [transactions]);
-  const maxTraffic = Math.max(...last30Days.map(d => d.processed + d.pending), 5);
 
   return (
     <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100 min-h-screen">
@@ -151,29 +217,101 @@ export default function SaoDashboard() {
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg p-4 shadow-sm">
           <div className="relative w-full sm:max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
-            <input type="text" placeholder="Search by Txn ID, Book, or Student ID..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
+            <input type="text" placeholder="Search by Student Name, ID, or Book..." value={txSearchQuery} onChange={(e) => {setTxSearchQuery(e.target.value); setAppPage(1); setRetPage(1); setHistPage(1);}} className="w-full pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
           </div>
         </div>
       )}
 
+      {/* UPGRADE: SAO Detailed Synced Operations Charts */}
       {activeTab === 'console' && (
-        <div className="bg-white border rounded-lg shadow-sm p-6 flex flex-col h-96 dark:bg-tabler-card dark:border-tabler-border">
-          <h3 className="font-semibold text-sm mb-6">30-Day Processing Volume</h3>
-          <div className="relative flex-1 w-full mt-2">
-            {[0, 25, 50, 75, 100].map(pct => (
-              <div key={pct} className="absolute w-full flex items-center z-0" style={{ bottom: `${pct}%` }}>
-                <div className="text-[10px] text-gray-400 w-6">{Math.round((pct/100)*maxTraffic)}</div>
-                <div className="flex-1 border-b border-dashed border-gray-200 dark:border-tabler-border"></div>
-              </div>
-            ))}
-            <div className="absolute inset-0 left-6 flex items-end justify-between px-2 pt-4 z-10">
+        <div className="bg-white border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm p-6 flex flex-col min-h-[400px] dark:bg-tabler-card relative">
+          <div className="flex justify-between items-center mb-6 relative z-30">
+            <h3 className="font-semibold text-sm">Synced Operations Hub</h3>
+            <div className="text-xs text-gray-500 dark:text-tabler-muted font-medium bg-gray-50 dark:bg-tabler-body/50 px-3 py-1 rounded">
+              Hover to synchronize views
+            </div>
+          </div>
+
+          <div className="relative w-full flex flex-col gap-2">
+            
+            {/* GLOBAL HOVER OVERLAY */}
+            <div className="absolute top-0 left-0 right-0 bottom-8 z-40 flex">
               {last30Days.map((day, i) => (
-                <div key={i} className="flex flex-col-reverse w-2 sm:w-4 h-full justify-start mx-auto group">
-                  <div className="w-full bg-tabler-primary rounded-t-sm" style={{ height: `${maxTraffic === 0 ? 0 : (day.processed/maxTraffic)*100}%` }}></div>
-                  <div className="w-full bg-tabler-warning" style={{ height: `${maxTraffic === 0 ? 0 : (day.pending/maxTraffic)*100}%` }}></div>
+                <div 
+                  key={`hover-${i}`} 
+                  className="flex-1 h-full relative cursor-crosshair group"
+                  onMouseEnter={() => setSyncedHover({ ...day, index: i })}
+                  onMouseLeave={() => setSyncedHover(null)}
+                >
+                  <div className={`hidden group-hover:block absolute top-0 bottom-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600 border-dashed border-l pointer-events-none`}></div>
                 </div>
               ))}
             </div>
+
+            {/* CHART 1: Requests & Borrowed (Dual Spline) */}
+            <div className="relative h-40 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2 mb-4">
+              <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+                <defs>
+                  <linearGradient id="gradReqSao" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#206bc4" stopOpacity="0.2"/><stop offset="100%" stopColor="#206bc4" stopOpacity="0"/></linearGradient>
+                </defs>
+                <path d={`${requestsPath} L1000,100 L0,100 Z`} fill="url(#gradReqSao)" className="transition-all duration-300" />
+                
+                {/* Total Requests Line */}
+                <path d={requestsPath} fill="none" stroke="#206bc4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Approved Borrowed Line */}
+                <path d={borrowedPath} fill="none" stroke="#2fb344" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6,4" />
+                
+                {syncedHover && (
+                  <>
+                    <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.requests / Math.max(maxRequests, 1)) * 85} r="4" fill="#206bc4" stroke="#fff" strokeWidth="2" />
+                    <circle cx={(syncedHover.index / 29) * 1000} cy={95 - (syncedHover.borrowed / Math.max(maxRequests, 1)) * 85} r="4" fill="#2fb344" stroke="#fff" strokeWidth="2" />
+                  </>
+                )}
+              </svg>
+              
+              {syncedHover && (
+                <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[130px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
+                  <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center text-gray-400 uppercase tracking-wider">{syncedHover.displayDate}</span>
+                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#206bc4]"></div> Total Requests</div> <span>{syncedHover.requests}</span></span>
+                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2fb344]"></div> Active Borrowed</div> <span>{syncedHover.borrowed}</span></span>
+                </div>
+              )}
+            </div>
+
+            {/* CHART 2: Resolved / Returned (Bar) */}
+            <div className="relative h-28 w-full border-b border-gray-100 dark:border-tabler-border/50 pb-2">
+              <div className="absolute inset-0 flex items-end justify-between px-1">
+                {last30Days.map((day, i) => (
+                  <div key={`bar-${i}`} className="w-full flex justify-center h-full items-end">
+                     <div 
+                       className={`w-3/4 max-w-[14px] rounded-t-sm transition-all duration-300 ${syncedHover?.index === i ? 'bg-[#3da9fc]' : 'bg-[#3da9fc]/70 dark:bg-[#3da9fc]/40'}`}
+                       style={{ height: `${(day.returned / Math.max(maxReturned, 1)) * 90}%` }}
+                     ></div>
+                  </div>
+                ))}
+              </div>
+
+              {syncedHover && (
+                <div className="absolute top-1 z-50 pointer-events-none transform -translate-x-1/2 bg-[#182433] text-white p-2 rounded shadow-lg flex flex-col min-w-[130px] transition-all duration-75" style={{ left: `calc(${(syncedHover.index / 29) * 100}%)` }}>
+                  <span className="text-[10px] font-bold border-b border-gray-700 pb-1 mb-1 text-center text-gray-400 uppercase tracking-wider">{syncedHover.displayDate}</span>
+                  <span className="text-xs flex justify-between items-center"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3da9fc]"></div> Resolved / Ret</div> <span>{syncedHover.returned}</span></span>
+                </div>
+              )}
+            </div>
+
+            {/* X-Axis Date Row */}
+            <div className="w-full flex pt-3 pb-1 relative">
+              {last30Days.map((day, i) => (
+                <div key={`label-${i}`} className="flex-1 relative">
+                  {i % 4 === 0 && (
+                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                      {day.displayDate}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
       )}
@@ -183,16 +321,18 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student ID</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedPending.map(tx => {
                   const item = inventory.find(i => i.id === tx.item_id);
+                  const student = usersList.find(u => u.id === tx.student_id);
                   return (
                     <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30">
                       <td className="px-5 py-3 flex items-center gap-3"><img src={item?.image || 'https://via.placeholder.com/150'} className="w-8 h-8 rounded object-cover" /><div><div className="font-medium">{item?.name || 'Unknown'}</div><div className="text-[10px] text-gray-500">{tx.transaction_id}</div></div></td>
                       <td className="px-5 py-3">
-                         <div className="text-gray-600 dark:text-gray-300 text-xs font-mono">{tx.student_id}</div>
+                         <div className="text-gray-900 dark:text-gray-100 text-sm font-medium">{student?.name || 'Unknown User'}</div>
+                         <div className="text-gray-500 dark:text-gray-400 text-[10px] font-mono mt-0.5">{tx.student_id}</div>
                          <div className="text-[10px] text-tabler-primary font-bold mt-1">Expected Return: {tx.expected_return_date || 'N/A'}</div>
                       </td>
                       <td className="px-5 py-3 text-right flex items-center justify-end gap-2">
@@ -215,16 +355,21 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Data</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Identity</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedActive.map(tx => {
                   const item = inventory.find(i => i.id === tx.item_id);
+                  const student = usersList.find(u => u.id === tx.student_id);
                   return (
                     <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30">
-                      <td className="px-5 py-3 flex items-center gap-4"><img src={item?.image || 'https://via.placeholder.com/150'} className="w-10 h-10 rounded object-cover" /><div><div className="font-medium">{item?.name || 'Unknown'}</div></div></td>
-                      <td className="px-5 py-3"><div className="font-mono text-xs text-gray-600 dark:text-gray-300">{tx.student_id}</div><div className="text-[10px] text-tabler-primary font-bold mt-1">Due: {tx.expected_return_date || 'N/A'}</div></td>
-                      <td className="px-5 py-3 text-right"><button onClick={() => openReturnModal(tx)} className="px-3 py-1.5 bg-tabler-primary/10 text-tabler-primary border border-tabler-primary/20 rounded text-xs flex items-center gap-1.5 ml-auto"><ArrowRightLeft className="w-3 h-3" /> Process Return</button></td>
+                      <td className="px-5 py-3 flex items-center gap-4"><img src={item?.image || 'https://via.placeholder.com/150'} className="w-10 h-10 rounded object-cover" /><div><div className="font-medium">{item?.name || 'Unknown'}</div><div className="text-[10px] text-gray-500">{tx.transaction_id}</div></div></td>
+                      <td className="px-5 py-3">
+                        <div className="text-gray-900 dark:text-gray-100 text-sm font-medium">{student?.name || 'Unknown User'}</div>
+                        <div className="text-gray-500 dark:text-gray-400 text-[10px] font-mono mt-0.5">{tx.student_id}</div>
+                        <div className="text-[10px] text-tabler-primary font-bold mt-1">Due: {tx.expected_return_date || 'N/A'}</div>
+                      </td>
+                      <td className="px-5 py-3 text-right"><button onClick={() => openReturnModal(tx)} className="px-3 py-1.5 bg-tabler-primary/10 text-tabler-primary border border-tabler-primary/20 rounded text-xs flex items-center gap-1.5 ml-auto transition-colors hover:bg-tabler-primary hover:text-white"><ArrowRightLeft className="w-3 h-3" /> Process Update</button></td>
                     </tr>
                   );
                 })}
@@ -241,15 +386,19 @@ export default function SaoDashboard() {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="border-b bg-gray-50 dark:bg-tabler-body/50 dark:border-tabler-border">
-                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student ID</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Date</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th></tr>
+                <tr><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Book Subject</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Student Details</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Date</th><th className="px-5 py-3 text-gray-500 text-[10px] uppercase">Status</th></tr>
               </thead>
               <tbody className="divide-y dark:divide-tabler-border">
                 {paginatedHistory.map(tx => {
                   const item = inventory.find(i => i.id === tx.item_id);
+                  const student = usersList.find(u => u.id === tx.student_id);
                   return (
                     <tr key={tx.transaction_id} className="hover:bg-gray-50 dark:hover:bg-tabler-border/30">
                       <td className="px-5 py-3 flex items-center gap-4"><img src={item?.image || 'https://via.placeholder.com/150'} className="w-10 h-10 rounded object-cover" /><div><div className="font-medium">{item?.name || 'Unknown'}</div><div className="text-[10px] text-gray-500 font-mono">{tx.transaction_id}</div></div></td>
-                      <td className="px-5 py-3"><div className="font-mono text-xs text-gray-600 dark:text-gray-300">{tx.student_id}</div></td>
+                      <td className="px-5 py-3">
+                        <div className="text-gray-900 dark:text-gray-100 text-sm font-medium">{student?.name || 'Unknown User'}</div>
+                        <div className="font-mono text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">{tx.student_id}</div>
+                      </td>
                       <td className="px-5 py-3 text-gray-600 dark:text-gray-400 text-xs">{tx.request_date}</td>
                       <td className="px-5 py-3">
                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -271,7 +420,7 @@ export default function SaoDashboard() {
 
       {canRead && activeTab === 'inventory' && (
         <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-sm flex flex-col min-h-[400px] overflow-hidden animate-in fade-in duration-300">
-          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
+          <div className="p-4 border-b border-gray-200 dark:border-tabler-border flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-tabler-body/30">
             <div className="relative w-full sm:w-auto">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-tabler-muted" />
               <input type="text" placeholder="Search database..." value={searchQuery} onChange={(e) => {setSearchQuery(e.target.value); setInvPage(1);}} className="w-full sm:w-64 pl-9 pr-3 py-2 sm:py-1.5 bg-white dark:bg-tabler-body border border-gray-300 dark:border-tabler-border rounded text-sm outline-none focus:border-tabler-primary transition-colors" />
@@ -303,11 +452,11 @@ export default function SaoDashboard() {
                     </td>
                   </tr>
                 ))}
-                {paginatedInventory.length === 0 && <tr><td col colSpan="4" className="px-5 py-8 text-center text-gray-500">No books match search.</td></tr>}
+                {paginatedInventory.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-gray-500">No books match search.</td></tr>}
               </tbody>
             </table>
           </div>
-          <Pagination page={invPage} setPage={setInvPage} total={filteredInventory.length} perPage={8} />
+          <Pagination page={invPage} setPage={setInvPage} total={filteredInventory.length} />
         </div>
       )}
 
@@ -335,7 +484,7 @@ export default function SaoDashboard() {
         </div>
       )}
 
-      {/* Modals for Action Processing */}
+      {/* Action Modals */}
       {approveModalOpen && approveTx && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white border rounded-lg shadow-2xl max-w-sm w-full dark:bg-tabler-card dark:border-tabler-border">
@@ -347,18 +496,44 @@ export default function SaoDashboard() {
         </div>
       )}
 
+      {/* UPGRADE: Detailed Process Return Modal */}
       {returnModalOpen && returnTx && (
-        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white border rounded-lg shadow-2xl max-w-sm w-full dark:bg-tabler-card dark:border-tabler-border">
+        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-sm w-full overflow-hidden">
             <div className="p-5">
-              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Inspect Physical Condition</label>
-              <select value={returnCondition} onChange={(e) => setReturnCondition(e.target.value)} className="w-full px-3 py-2 border rounded text-sm outline-none mb-4 dark:bg-tabler-body dark:border-tabler-border"><option value="Available">Good / Available</option><option value="Damaged">Damaged</option></select>
-              <div className="flex flex-col sm:flex-row justify-end gap-3"><button onClick={() => setReturnModalOpen(false)} className="w-full sm:w-auto px-4 py-2 border rounded">Cancel</button><button onClick={handleProcessReturn} className="w-full sm:w-auto px-4 py-2 text-white bg-tabler-primary rounded">Confirm Return</button></div>
+              <div className="mb-4 pb-4 border-b border-gray-100 dark:border-tabler-border">
+                 <h3 className="font-bold text-lg text-gray-900 dark:text-white">Process Transaction</h3>
+                 <p className="text-xs text-gray-500 dark:text-tabler-muted mt-1">Txn ID: <span className="font-mono">{returnTx.transaction_id}</span></p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-tabler-muted mb-1.5 uppercase tracking-wide">Transaction Status</label>
+                  <select value={returnAction} onChange={(e) => setReturnAction(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-tabler-border rounded text-sm outline-none dark:bg-tabler-body font-medium text-gray-700 dark:text-gray-200 focus:border-tabler-primary transition-colors">
+                    <option value="Returned">Returned (Close Transaction)</option>
+                    <option value="Borrowed">Keep Borrowed (Active)</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-tabler-muted mb-1.5 uppercase tracking-wide">Physical Item Condition</label>
+                  <select value={returnCondition} onChange={(e) => setReturnCondition(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-tabler-border rounded text-sm outline-none dark:bg-tabler-body font-medium text-gray-700 dark:text-gray-200 focus:border-tabler-primary transition-colors">
+                    <option value="Available">Good / Available</option>
+                    <option value="Damaged">Damaged</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+                <button onClick={() => setReturnModalOpen(false)} className="w-full sm:w-auto px-4 py-2 border border-gray-300 dark:border-tabler-border rounded text-sm font-medium hover:bg-gray-50 dark:hover:bg-tabler-border/50 transition-colors text-gray-700 dark:text-gray-300">Cancel</button>
+                <button onClick={handleProcessReturn} className="w-full sm:w-auto px-4 py-2 text-white bg-tabler-primary hover:bg-[#1d5fb3] rounded text-sm font-bold transition-colors shadow-sm">Confirm Update</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Book Form Modal */}
       {isItemModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 dark:bg-tabler-body/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-tabler-card border border-gray-200 dark:border-tabler-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden">

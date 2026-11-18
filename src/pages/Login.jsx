@@ -10,7 +10,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // 3D Parallax Logo States
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinRotation, setSpinRotation] = useState(0);
@@ -31,35 +30,25 @@ export default function Login() {
     }
   };
 
-  // Calculates the 3D tilt based on mouse position relative to the center of the panel
   const handleMouseMove = (e) => {
     if (!panelRef.current || isSpinning) return;
     const rect = panelRef.current.getBoundingClientRect();
-    
-    // Find mouse position relative to the container
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
-    // Convert to percentages (-0.5 to +0.5) and multiply by max rotation angle (30 degrees)
-    const xPct = (x / rect.width - 0.5) * 30; // Rotates on Y axis
-    const yPct = (y / rect.height - 0.5) * -30; // Rotates on X axis
-    
+    const xPct = (x / rect.width - 0.5) * 30; 
+    const yPct = (y / rect.height - 0.5) * -30; 
     setTilt({ x: xPct, y: yPct });
   };
 
-  // Reset tilt when mouse leaves the panel
   const handleMouseLeave = () => {
     if(!isSpinning) setTilt({ x: 0, y: 0 });
   };
 
-  // Triggers the 360 coin-spin animation
   const handleLogoClick = () => {
     if (isSpinning) return;
     setIsSpinning(true);
-    setSpinRotation(prev => prev + 360); // Adds 360 degrees to the current rotation
-    setTilt({ x: 0, y: 0 }); // Center the tilt for a clean spin
-    
-    // Unlock the tilt after the spin animation completes
+    setSpinRotation(prev => prev + 360); 
+    setTilt({ x: 0, y: 0 }); 
     setTimeout(() => setIsSpinning(false), 1000);
   };
 
@@ -97,29 +86,42 @@ export default function Login() {
             </button>
           </form>
           <div className="mt-8 text-center text-sm text-gray-500 dark:text-tabler-muted">
-            Don't have an account yet? <Link to="/register" className="text-tabler-primary hover:underline font-medium">Request access</Link>
+            Don't have an account yet? <Link to="/register" className="text-tabler-primary hover:underline font-medium">Sign up</Link>
           </div>
         </div>
       </div>
 
-      {/* Right Panel: Interactive 3D Canvas */}
+      {/* Right Panel: Interactive 3D Canvas with Aurora Background */}
       <div 
         ref={panelRef}
-        className="hidden lg:flex lg:w-1/2 relative bg-[#0b1320] overflow-hidden items-center justify-center perspective-1000"
+        className="hidden lg:flex lg:w-1/2 relative bg-[#060c17] overflow-hidden items-center justify-center perspective-1000"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Background Grid Pattern */}
-        <style>{`.bg-tech-grid { background-size: 40px 40px; background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px); } .perspective-1000 { perspective: 1000px; }`}</style>
-        <div className="absolute inset-0 bg-tech-grid z-0 opacity-70"></div>
+        <style>
+          {`
+            @keyframes blob {
+              0% { transform: translate(0px, 0px) scale(1); }
+              33% { transform: translate(30px, -50px) scale(1.1); }
+              66% { transform: translate(-20px, 20px) scale(0.9); }
+              100% { transform: translate(0px, 0px) scale(1); }
+            }
+            .animate-blob { animation: blob 10s infinite alternate; }
+            .animation-delay-2000 { animation-delay: 2s; }
+            .animation-delay-4000 { animation-delay: 4s; }
+            .perspective-1000 { perspective: 1000px; }
+          `}
+        </style>
         
-        {/* Dynamic Light source following mouse */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#206bc4] rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-blob pointer-events-none"></div>
+        <div className="absolute top-1/3 right-1/4 w-80 h-80 bg-[#8b5cf6] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-blob animation-delay-2000 pointer-events-none"></div>
+        <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-[#1d5fb3] rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-blob animation-delay-4000 pointer-events-none"></div>
+
         <div 
           className="absolute inset-0 z-0 pointer-events-none transition-opacity duration-300" 
-          style={{ background: `radial-gradient(800px circle at ${tilt.x * 10 + 50}% ${tilt.y * -10 + 50}%, rgba(32,107,196,0.15), transparent 40%)` }}
+          style={{ background: `radial-gradient(800px circle at ${tilt.x * 10 + 50}% ${tilt.y * -10 + 50}%, rgba(255,255,255,0.03), transparent 40%)` }}
         ></div>
 
-        {/* 3D Interactive Logo Container */}
         <div 
           onClick={handleLogoClick}
           className="relative z-10 cursor-pointer transform-gpu preserve-3d group"
@@ -129,19 +131,16 @@ export default function Login() {
             transformStyle: 'preserve-3d'
           }}
         >
-          {/* Ambient Glow behind the logo */}
-          <div className="absolute inset-0 bg-tabler-primary/30 blur-[80px] rounded-full transform -translate-z-12 group-hover:bg-tabler-primary/50 transition-colors duration-500"></div>
+          <div className="absolute inset-0 bg-white/5 blur-[60px] rounded-full transform -translate-z-12 group-hover:bg-white/10 transition-colors duration-500"></div>
           
-          {/* The High-Res UC Logo */}
           <img 
             src="https://uc.edu.ph/wp-content/uploads/2026/06/uc-logo-scaled-1-scaled.webp" 
             alt="Interactive UC Logo" 
-            className="w-[450px] h-auto object-contain drop-shadow-[0_20px_50px_rgba(32,107,196,0.3)] select-none pointer-events-none"
+            className="w-[450px] h-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] select-none pointer-events-none"
           />
         </div>
 
-        {/* Floating Hint Text */}
-        <div className="absolute bottom-12 text-tabler-primary/50 text-xs font-bold tracking-[0.2em] uppercase animate-pulse pointer-events-none">
+        <div className="absolute bottom-12 text-white/30 text-xs font-bold tracking-[0.2em] uppercase animate-pulse pointer-events-none">
           Click to Interact
         </div>
 
